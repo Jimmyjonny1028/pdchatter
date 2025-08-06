@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatPDF Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chat-bubble { max-width: 80%; }
+        .user-bubble { background-color: #3b82f6; color: white; }
+        .ai-bubble { background-color: #e5e7eb; color: #1f2937; }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen">
+
+    <header class="bg-white shadow-md p-4">
+        <h1 class="text-2xl font-bold text-gray-800">ChatPDF Server</h1>
+        <p id="status" class="text-sm text-gray-500">Status: Connecting to server...</p>
+    </header>
+
+    <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- Chat messages will be added here -->
+    </main>
+
+    <footer class="bg-white p-4 shadow-inner">
+        <div class="flex items-center space-x-4">
+            <div>
+                <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-400 text-white font-bold py-2 px-4 rounded-lg">
+                    📁 Upload PDF
+                </label>
+                <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
+            </div>
+            <input type="text" id="message-input" class="flex-1 border border-gray-300 rounded-lg p-2" placeholder="Please upload a PDF first..." disabled>
+            <button id="send-button" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
+        </div>
+    </footer>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const pdfUploadInput = document.getElementById('pdf-upload');
+        const uploadLabel = document.getElementById('upload-label');
+        const statusElement = document.getElementById('status');
+
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/web`;
+        let socket;
+
+        function connect() {
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log("Connected to server.");
+            };
+
+            socket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleServerMessage(message);
+            };
+
+            socket.onclose = () => {
+                statusElement.textContent = "Status: Disconnected. Retrying...";
+                setTimeout(connect, 3000);
+            };
+
+            socket.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+                socket.close();
+            };
+        }
+
+        function handleServerMessage(message) {
+            switch (message.type) {
+                case 'status':
+                    statusElement.textContent = `Status: ${message.data}`;
+                    addMessage(message.data, 'ai');
+                    if (message.data.includes("Ready to upload")) {
+                        pdfUploadInput.disabled = false;
+                        uploadLabel.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                        uploadLabel.classList.add('bg-blue-500', 'hover:bg-blue-600', 'cursor-pointer');
+                    }
+                    break;
+                case 'answer':
+                    addMessage(message.data, 'ai');
+                    enableChat();
+                    break;
+                case 'error':
+                    addMessage(`Error: ${message.data}`, 'ai');
+                    enableChat();
+                    break;
+            }
+        }
+
+        function addMessage(text, sender) {
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
+            if (sender === 'user') {
+                bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+            } else {
+                bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+            }
+            bubble.textContent = text;
+            chatContainer.appendChild(bubble);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function uploadPDF() {
+            const file = pdfUploadInput.files[0];
+            if (!file) return;
+
+            statusElement.textContent = `Status: Uploading '${file.name}' to local worker...`;
+            addMessage(`Uploading ${file.name}...`, 'ai');
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const file_content_base64 = e.target.result.split(',')[1];
+                socket.send(JSON.stringify({ type: 'upload', data: file_content_base64 }));
+            };
+            reader.readAsDataURL(file);
+
+            messageInput.placeholder = "Processing PDF...";
+        }
+
+        function sendMessage() {
+            const question = messageInput.value.trim();
+            if (!question) return;
+
+            addMessage(question, 'user');
+            socket.send(JSON.stringify({ type: 'ask', data: question }));
+            messageInput.value = '';
+            disableChat();
+        }
+
+        function disableChat() {
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            sendButton.classList.add('bg-gray-400');
+            sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+        }
+
+        function enableChat() {
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            sendButton.classList.remove('bg-gray-400');
+            sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
+            messageInput.placeholder = "Ask a question about the PDF...";
+            messageInput.focus();
+        }
+
+        pdfUploadInput.addEventListener('change', uploadPDF);
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') sendMessage();
+        });
+
+        connect();
+    </script>
+</body>
+</html>
