@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        .chat-bubble { max-width: 80%; }
+        .chat-bubble { max-width: 80%; word-wrap: break-word; }
         .user-bubble { background-color: #3b82f6; color: white; }
         .ai-bubble { background-color: #e5e7eb; color: #1f2937; }
     </style>
@@ -31,12 +31,13 @@
                 </label>
                 <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
             </div>
-            <input type="text" id="message-input" class="flex-1 border border-gray-300 rounded-lg p-2" placeholder="Please upload a PDF first..." disabled>
+            <input type="text" id="message-input" class="flex-1 border border-gray-300 rounded-lg p-2" placeholder="Please connect to worker..." disabled>
             <button id="send-button" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
         </div>
     </footer>
 
     <script>
+        // --- UI ELEMENTS ---
         const chatContainer = document.getElementById('chat-container');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
@@ -44,16 +45,49 @@
         const uploadLabel = document.getElementById('upload-label');
         const statusElement = document.getElementById('status');
         
+        // --- WEBSOCKET SETUP ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${wsProtocol}//${window.location.host}/ws/web`;
         let socket;
 
+        // --- UI STATE MANAGEMENT ---
+        function setUIState(state, message = "") {
+            statusElement.textContent = `Status: ${message}`;
+            
+            const isChatReady = state === 'ready_to_chat';
+            const isWorkerReady = state === 'worker_ready' || isChatReady;
+            
+            // Upload button state
+            pdfUploadInput.disabled = !isWorkerReady;
+            if (isWorkerReady) {
+                uploadLabel.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                uploadLabel.classList.add('bg-blue-500', 'hover:bg-blue-600', 'cursor-pointer');
+            } else {
+                uploadLabel.classList.add('bg-gray-400', 'cursor-not-allowed');
+                uploadLabel.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'cursor-pointer');
+            }
+
+            // Chat input state
+            messageInput.disabled = !isChatReady;
+            sendButton.disabled = !isChatReady;
+            if (isChatReady) {
+                messageInput.placeholder = "Ask a question about the PDF...";
+                sendButton.classList.remove('bg-gray-400');
+                sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
+                messageInput.focus();
+            } else {
+                messageInput.placeholder = message;
+                sendButton.classList.add('bg-gray-400');
+                sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+            }
+        }
+
+        // --- WEBSOCKET LOGIC ---
         function connect() {
             socket = new WebSocket(wsUrl);
+            setUIState('connecting', 'Connecting to server...');
 
-            socket.onopen = () => {
-                console.log("Connected to server.");
-            };
+            socket.onopen = () => console.log("Connected to server.");
 
             socket.onmessage = (event) => {
                 const message = JSON.parse(event.data);
@@ -61,7 +95,7 @@
             };
 
             socket.onclose = () => {
-                statusElement.textContent = "Status: Disconnected. Retrying...";
+                setUIState('disconnected', 'Disconnected. Retrying...');
                 setTimeout(connect, 3000);
             };
 
@@ -74,30 +108,27 @@
         function handleServerMessage(message) {
             switch (message.type) {
                 case 'status':
-                    statusElement.textContent = `Status: ${message.data}`;
                     addMessage(message.data, 'ai');
-                    if (message.data.includes("Ready to upload")) {
-                        pdfUploadInput.disabled = false;
-                        uploadLabel.classList.remove('bg-gray-400', 'cursor-not-allowed');
-                        uploadLabel.classList.add('bg-blue-500', 'hover:bg-blue-600', 'cursor-pointer');
-                    }
-                    // --- THIS IS THE FIX ---
-                    // Check for the correct message to enable the chat
-                    if (message.data.includes("Ready for questions")) {
-                        enableChat();
+                    if (message.data.includes("Waiting for local AI worker")) {
+                        setUIState('waiting_for_worker', 'Waiting for local AI worker...');
+                    } else if (message.data.includes("AI worker connected")) {
+                        setUIState('worker_ready', 'AI worker connected. Ready to upload.');
+                    } else if (message.data.includes("Ready for questions")) {
+                        setUIState('ready_to_chat', message.data);
                     }
                     break;
                 case 'answer':
                     addMessage(message.data, 'ai');
-                    enableChat();
+                    setUIState('ready_to_chat', statusElement.textContent.replace('Status: ',''));
                     break;
                 case 'error':
                     addMessage(`Error: ${message.data}`, 'ai');
-                    enableChat();
+                    setUIState('ready_to_chat', statusElement.textContent.replace('Status: ',''));
                     break;
             }
         }
 
+        // --- UI HELPER FUNCTIONS ---
         function addMessage(text, sender) {
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
@@ -111,11 +142,12 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
+        // --- EVENT HANDLERS ---
         function uploadPDF() {
             const file = pdfUploadInput.files[0];
             if (!file) return;
 
-            statusElement.textContent = `Status: Uploading '${file.name}' to local worker...`;
+            setUIState('processing', `Processing '${file.name}'...`);
             addMessage(`Uploading ${file.name}...`, 'ai');
             
             const reader = new FileReader();
@@ -124,8 +156,6 @@
                 socket.send(JSON.stringify({ type: 'upload', data: file_content_base64 }));
             };
             reader.readAsDataURL(file);
-            
-            messageInput.placeholder = "Processing PDF...";
         }
 
         function sendMessage() {
@@ -135,23 +165,7 @@
             addMessage(question, 'user');
             socket.send(JSON.stringify({ type: 'ask', data: question }));
             messageInput.value = '';
-            disableChat();
-        }
-        
-        function disableChat() {
-            messageInput.disabled = true;
-            sendButton.disabled = true;
-            sendButton.classList.add('bg-gray-400');
-            sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
-        }
-
-        function enableChat() {
-            messageInput.disabled = false;
-            sendButton.disabled = false;
-            sendButton.classList.remove('bg-gray-400');
-            sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
-            messageInput.placeholder = "Ask a question about the PDF...";
-            messageInput.focus();
+            setUIState('ai_thinking', 'AI is thinking...');
         }
 
         pdfUploadInput.addEventListener('change', uploadPDF);
@@ -160,6 +174,7 @@
             if (event.key === 'Enter') sendMessage();
         });
         
+        // --- INITIALIZE ---
         connect();
     </script>
 </body>
