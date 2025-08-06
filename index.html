@@ -43,7 +43,7 @@
         const pdfUploadInput = document.getElementById('pdf-upload');
         const uploadLabel = document.getElementById('upload-label');
         const statusElement = document.getElementById('status');
-
+        
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${wsProtocol}//${window.location.host}/ws/web`;
         let socket;
@@ -81,6 +81,11 @@
                         uploadLabel.classList.remove('bg-gray-400', 'cursor-not-allowed');
                         uploadLabel.classList.add('bg-blue-500', 'hover:bg-blue-600', 'cursor-pointer');
                     }
+                    // --- THIS IS THE FIX ---
+                    // Check for the correct message to enable the chat
+                    if (message.data.includes("Ready for questions")) {
+                        enableChat();
+                    }
                     break;
                 case 'answer':
                     addMessage(message.data, 'ai');
@@ -112,14 +117,14 @@
 
             statusElement.textContent = `Status: Uploading '${file.name}' to local worker...`;
             addMessage(`Uploading ${file.name}...`, 'ai');
-
+            
             const reader = new FileReader();
             reader.onload = (e) => {
                 const file_content_base64 = e.target.result.split(',')[1];
                 socket.send(JSON.stringify({ type: 'upload', data: file_content_base64 }));
             };
             reader.readAsDataURL(file);
-
+            
             messageInput.placeholder = "Processing PDF...";
         }
 
@@ -132,7 +137,7 @@
             messageInput.value = '';
             disableChat();
         }
-
+        
         function disableChat() {
             messageInput.disabled = true;
             sendButton.disabled = true;
@@ -154,7 +159,7 @@
         messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') sendMessage();
         });
-
+        
         connect();
     </script>
 </body>
