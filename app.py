@@ -1,5 +1,5 @@
 # File: server.py (for Render)
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import FileResponse
 import uvicorn
 import json
@@ -19,8 +19,6 @@ class ConnectionManager:
     async def connect_local_worker(self, websocket: WebSocket):
         await websocket.accept()
         self.local_worker = websocket
-        for client in self.web_clients.values():
-            await client.send_json({"type": "status", "data": "AI worker connected. Ready to upload."})
 
     def disconnect_web_client(self, user_id: str):
         if user_id in self.web_clients:
@@ -28,11 +26,6 @@ class ConnectionManager:
 
     async def disconnect_local_worker(self):
         self.local_worker = None
-        for client in self.web_clients.values():
-            try:
-                await client.send_json({"type": "status", "data": "AI worker disconnected. Please refresh."})
-            except Exception:
-                pass # Client might already be disconnected
         print("Worker disconnected.")
 
     async def forward_to_worker(self, message: str):
@@ -72,14 +65,17 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     }))
     return {"message": "File sent to worker for processing."}
 
-@app.post("/remove_watermark/{user_id}")
-async def http_remove_watermark(user_id: str, image: UploadFile = File(...), mask: UploadFile = File(...)):
+# --- THIS IS THE NEW, ROBUST ENDPOINT ---
+@app.post("/remove_watermark_manual/{user_id}")
+async def http_remove_watermark_manual(user_id: str, image: UploadFile = File(...), mask: UploadFile = File(...)):
     if not manager.local_worker:
         return {"error": "Local AI worker is not connected."}
+    
     image_content = await image.read()
     mask_content = await mask.read()
     image_base64 = base64.b64encode(image_content).decode('utf-8')
     mask_base64 = base64.b64encode(mask_content).decode('utf-8')
+
     await manager.forward_to_worker(json.dumps({
         "type": "remove_watermark_manual", "user_id": user_id,
         "image": image_base64, "mask": mask_base64
