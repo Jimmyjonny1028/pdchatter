@@ -18,6 +18,8 @@ class ConnectionManager:
     async def connect_local_worker(self, websocket: WebSocket):
         await websocket.accept()
         self.local_worker = websocket
+        for client in self.web_clients.values():
+            await client.send_json({"type": "status", "data": "AI worker connected. Ready to upload."})
 
     def disconnect_web_client(self, user_id: str):
         if user_id in self.web_clients:
@@ -25,6 +27,11 @@ class ConnectionManager:
 
     async def disconnect_local_worker(self):
         self.local_worker = None
+        for client in self.web_clients.values():
+            try:
+                await client.send_json({"type": "status", "data": "AI worker disconnected. Please refresh."})
+            except Exception:
+                pass # Client might already be disconnected
         print("Worker disconnected.")
 
     async def forward_to_worker(self, message: str):
@@ -48,11 +55,6 @@ manager = ConnectionManager()
 async def get_homepage():
     return FileResponse('index.html')
 
-# --- NEW: Status endpoint for the website to poll ---
-@app.get("/status")
-async def get_status():
-    return {"worker_connected": manager.local_worker is not None}
-
 @app.websocket("/ws/worker")
 async def worker_websocket(websocket: WebSocket):
     await manager.connect_local_worker(websocket)
@@ -66,6 +68,12 @@ async def worker_websocket(websocket: WebSocket):
 @app.websocket("/ws/web/{user_id}")
 async def web_client_websocket(websocket: WebSocket, user_id: str):
     await manager.connect_web_client(websocket, user_id)
+    if not manager.local_worker:
+        await websocket.send_json({"type": "status", "data": "Waiting for local AI worker to connect..."})
+    else:
+        await websocket.send_json({"type": "status", "data": "AI worker connected. Ready to upload."})
+        await manager.forward_to_worker(json.dumps({"type": "list_chats", "user_id": user_id}))
+        
     try:
         while True:
             data_text = await websocket.receive_text()
