@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatPDF Server</title>
+    <title>AI Server</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -11,6 +11,7 @@
         .user-bubble { background-color: #3b82f6; color: white; }
         .ai-bubble { background-color: #e5e7eb; color: #1f2937; }
         #chat-sidebar { transition: transform 0.3s ease-in-out; }
+        .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
@@ -20,64 +21,79 @@
 <body class="bg-gray-100 h-screen overflow-hidden">
 
     <div class="flex h-full">
-        <!-- Chat History Sidebar (Initially Hidden) -->
+        <!-- Chat History Sidebar -->
         <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20">
             <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
                 <h2 class="text-xl font-bold">Saved Chats</h2>
                 <button id="close-sidebar-button" class="text-slate-400 hover:text-white text-2xl">&times;</button>
             </div>
-            <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2">
-                <!-- Saved chats will be added here -->
-            </div>
+            <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2"></div>
         </aside>
 
         <!-- Main Content Area -->
         <div class="flex-1 flex flex-col h-full">
-             <header class="bg-white shadow-md p-4 flex items-center space-x-4">
-                <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-                </button>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-800">ChatPDF</h1>
-                    <p id="status" class="text-sm text-gray-500">Status: Connecting to server...</p>
+             <header class="bg-white shadow-md p-4 flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </button>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">AI Toolkit</h1>
+                        <p id="status" class="text-sm text-gray-500">Status: Connecting to server...</p>
+                    </div>
+                </div>
+                <div class="border-b-2 border-transparent">
+                    <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none active">ChatPDF</button>
+                    <button id="tab-watermark" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none">Watermark Remover</button>
                 </div>
             </header>
-            <div class="flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
-                <!-- PDF Preview Pane -->
-                <section id="pdf-viewer-container" class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden">
-                    <div class="p-2 border-b bg-gray-50">
-                        <h2 id="pdf-title" class="text-lg font-bold text-gray-700 truncate">PDF Preview</h2>
-                    </div>
-                    <div class="flex-1 p-2">
-                        <embed id="pdf-viewer" src="" type="application/pdf" width="100%" height="100%"/>
-                    </div>
-                </section>
 
-                <!-- Chat Interface -->
+            <!-- ChatPDF View -->
+            <div id="view-chatpdf" class="flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
+                <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden">
+                    <div class="p-2 border-b bg-gray-50"><h2 id="pdf-title" class="text-lg font-bold text-gray-700 truncate">PDF Preview</h2></div>
+                    <div class="flex-1 p-2"><embed id="pdf-viewer" src="" type="application/pdf" width="100%" height="100%"/></div>
+                </section>
                 <section class="flex flex-col h-full overflow-hidden">
                     <div class="bg-white rounded-lg shadow-md flex flex-col flex-1">
-                        <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4">
-                            <!-- Chat messages will be added here -->
-                        </main>
+                        <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4"></main>
                         <footer class="bg-white p-4 border-t">
                             <div class="flex items-center space-x-4">
                                 <div>
-                                    <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-400 text-white font-bold py-2 px-4 rounded-lg">
-                                        📁 Upload PDF
-                                    </label>
+                                    <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-400 text-white font-bold py-2 px-4 rounded-lg">📁 Upload PDF</label>
                                     <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
                                 </div>
                                 <input type="text" id="message-input" class="flex-1 border border-gray-300 rounded-lg p-2" placeholder="Please connect to worker..." disabled>
                                 <button id="send-button" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
-                                <button id="save-chat-button" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-600 transition-colors" disabled>Save</button>
+                                <button id="save-chat-button" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Save</button>
                             </div>
                         </footer>
                     </div>
                 </section>
             </div>
+
+            <!-- Watermark Remover View (Hidden by default) -->
+            <div id="view-watermark" class="hidden flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
+                 <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden items-center justify-center p-4">
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">Original Image</h2>
+                    <img id="wm-original-preview" src="https://placehold.co/600x400/e2e8f0/475569?text=Upload+Image" class="max-w-full max-h-full object-contain rounded-md">
+                 </section>
+                 <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden items-center justify-center p-4">
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">Result</h2>
+                    <div id="wm-result-container" class="w-full h-full flex items-center justify-center">
+                        <img id="wm-result-preview" src="https://placehold.co/600x400/e2e8f0/475569?text=Result+Appears+Here" class="max-w-full max-h-full object-contain rounded-md">
+                    </div>
+                 </section>
+                 <footer class="col-span-2 bg-white p-4 rounded-lg shadow-md flex items-center justify-center space-x-4">
+                    <label for="wm-image-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">1. Upload Image</label>
+                    <input id="wm-image-upload" type="file" class="hidden" accept="image/*">
+                    <label for="wm-mask-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">2. Upload Mask</label>
+                    <input id="wm-mask-upload" type="file" class="hidden" accept="image/*">
+                    <button id="wm-remove-button" class="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600" disabled>3. Remove Watermark</button>
+                 </footer>
+            </div>
         </div>
     </div>
-
 
     <script>
         // --- UI ELEMENTS ---
@@ -95,6 +111,16 @@
             closeSidebarButton: document.getElementById('close-sidebar-button'),
             saveChatButton: document.getElementById('save-chat-button'),
             savedChatsList: document.getElementById('saved-chats-list'),
+            tabChatPDF: document.getElementById('tab-chatpdf'),
+            tabWatermark: document.getElementById('tab-watermark'),
+            viewChatPDF: document.getElementById('view-chatpdf'),
+            viewWatermark: document.getElementById('view-watermark'),
+            wmImageUpload: document.getElementById('wm-image-upload'),
+            wmMaskUpload: document.getElementById('wm-mask-upload'),
+            wmRemoveButton: document.getElementById('wm-remove-button'),
+            wmOriginalPreview: document.getElementById('wm-original-preview'),
+            wmResultPreview: document.getElementById('wm-result-preview'),
+            wmResultContainer: document.getElementById('wm-result-container'),
         };
         
         // --- APP STATE ---
@@ -105,7 +131,8 @@
             userId = 'user_' + Math.random().toString(36).substr(2, 9);
             localStorage.setItem('chatpdf_user_id', userId);
         }
-        let workerHasConnectedBefore = false; // --- THIS IS THE FIX ---
+        let uploadedImage = null;
+        let uploadedMask = null;
 
         // --- WEBSOCKET SETUP ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -145,12 +172,10 @@
         function connect() {
             socket = new WebSocket(wsUrl);
             setUIState('connecting', 'Connecting to server...');
-
             socket.onopen = () => console.log("Connected to server.");
             socket.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
             socket.onclose = () => {
                 setUIState('disconnected', 'Disconnected. Retrying...');
-                workerHasConnectedBefore = false; // Reset on disconnect
                 setTimeout(connect, 3000);
             };
             socket.onerror = (error) => {
@@ -162,23 +187,10 @@
         function handleServerMessage(message) {
             switch (message.type) {
                 case 'status':
-                    // --- THIS IS THE FIX ---
-                    // Only add the "worker connected" message to the chat ONCE.
-                    if (message.data.includes("AI worker connected")) {
-                        if (!workerHasConnectedBefore) {
-                            addMessage(message.data, 'ai');
-                            workerHasConnectedBefore = true;
-                        }
-                        setUIState('worker_ready', 'AI worker connected. Ready to upload.');
-                    } else {
-                        // For all other status messages, add them to the chat.
-                        addMessage(message.data, 'ai');
-                        if (message.data.includes("Waiting for local AI worker")) {
-                            setUIState('waiting_for_worker', 'Waiting for local AI worker...');
-                        } else if (message.data.includes("Ready for questions")) {
-                            setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
-                        }
-                    }
+                    addMessage(message.data, 'ai');
+                    if (message.data.includes("Waiting for local AI worker")) setUIState('waiting_for_worker', 'Waiting for local AI worker...');
+                    else if (message.data.includes("AI worker connected")) setUIState('worker_ready', 'AI worker connected. Ready to upload.');
+                    else if (message.data.includes("Ready for questions")) setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                     break;
                 case 'answer':
                     addMessage(message.data, 'ai');
@@ -195,25 +207,27 @@
                     const { history, pdf_data, pdf_name } = message.data;
                     currentPDFName = pdf_name;
                     ui.pdfTitle.textContent = currentPDFName;
-                    
                     const byteCharacters = atob(pdf_data);
                     const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) {
-                        byteNumbers[i] = byteCharacters.charCodeAt(i);
-                    }
+                    for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
                     const byteArray = new Uint8Array(byteNumbers);
                     const blob = new Blob([byteArray], {type: 'application/pdf'});
-                    const objectURL = URL.createObjectURL(blob);
-                    ui.pdfViewer.src = objectURL;
-
+                    ui.pdfViewer.src = URL.createObjectURL(blob);
                     renderChatHistory(history);
                     setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    break;
+                case 'watermark_removed':
+                    ui.wmResultPreview.src = `data:image/png;base64,${message.data}`;
+                    ui.status.textContent = 'Status: Watermark removed successfully!';
+                    ui.wmRemoveButton.disabled = false;
+                    ui.wmRemoveButton.textContent = '3. Remove Watermark';
                     break;
             }
         }
 
         // --- UI HELPER FUNCTIONS ---
         function addMessage(text, sender) {
+            if (ui.viewChatPDF.classList.contains('hidden')) return; // Don't add messages to hidden chat
             currentChatHistory.push({ sender, text });
             ui.saveChatButton.disabled = currentChatHistory.length === 0;
             const bubble = document.createElement('div');
@@ -224,7 +238,7 @@
             ui.chatContainer.appendChild(bubble);
             ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
         }
-
+        
         function renderChatList(chatNames) {
             ui.savedChatsList.innerHTML = '';
             if (chatNames.length === 0) {
@@ -261,16 +275,13 @@
         function uploadPDF() {
             const file = ui.pdfUploadInput.files[0];
             if (!file) return;
-
             ui.chatContainer.innerHTML = '';
             currentChatHistory = [];
             currentPDFName = file.name;
             ui.pdfTitle.textContent = currentPDFName;
             ui.pdfViewer.src = URL.createObjectURL(file);
-
             setUIState('processing', `Processing '${file.name}'...`);
             addMessage(`Uploading ${file.name}...`, 'ai');
-            
             const reader = new FileReader();
             reader.onload = (e) => {
                 const file_content_base64 = e.target.result.split(',')[1];
@@ -282,7 +293,6 @@
         function sendMessage() {
             const question = ui.messageInput.value.trim();
             if (!question) return;
-
             addMessage(question, 'user');
             socket.send(JSON.stringify({ type: 'ask', data: question }));
             ui.messageInput.value = '';
@@ -293,38 +303,40 @@
             const chatName = currentPDFName || 'Chat';
             const timestamp = new Date().toLocaleString();
             const key = `chat_${Date.now()}`;
-            
-            localStorage.setItem(key, JSON.stringify({
-                name: `${chatName} - ${timestamp}`,
-                history: currentChatHistory,
-                pdfName: currentPDFName
-            }));
-            
+            localStorage.setItem(key, JSON.stringify({ name: `${chatName} - ${timestamp}`, history: currentChatHistory, pdfName: currentPDFName }));
             addMessage('Chat saved to your browser\'s local storage.', 'ai');
             loadSavedChats();
         }
 
-        function loadSavedChats() {
-            ui.savedChatsList.innerHTML = '';
-            const keys = Object.keys(localStorage).filter(k => k.startsWith('chat_'));
-            if (keys.length === 0) {
-                ui.savedChatsList.innerHTML = '<p class="text-slate-400">No saved chats yet.</p>';
-                return;
-            }
-            
-            keys.forEach(key => {
-                const savedData = JSON.parse(localStorage.getItem(key));
-                const item = document.createElement('div');
-                item.classList.add('p-2', 'bg-slate-700', 'rounded-md', 'cursor-pointer', 'hover:bg-slate-600', 'truncate');
-                item.textContent = savedData.name;
-                item.onclick = () => {
-                    socket.send(JSON.stringify({ type: 'load_chat', data: savedData.pdfName }));
-                    ui.sidebar.classList.add('-translate-x-full');
-                };
-                ui.savedChatsList.appendChild(item);
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = error => reject(error);
             });
         }
 
+        async function removeWatermark() {
+            if (!uploadedImage || !uploadedMask) {
+                alert("Please upload both an image and a mask file.");
+                return;
+            }
+            ui.status.textContent = 'Status: Removing watermark...';
+            ui.wmRemoveButton.disabled = true;
+            ui.wmRemoveButton.textContent = 'Processing...';
+
+            const image_base64 = await fileToBase64(uploadedImage);
+            const mask_base64 = await fileToBase64(uploadedMask);
+
+            socket.send(JSON.stringify({
+                type: 'remove_watermark',
+                image: image_base64,
+                mask: mask_base64
+            }));
+        }
+
+        // --- INITIALIZE ---
         ui.openSidebarButton.addEventListener('click', () => {
             socket.send(JSON.stringify({ type: 'list_chats' }));
             ui.sidebar.classList.remove('-translate-x-full');
@@ -336,8 +348,29 @@
         ui.messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') sendMessage();
         });
+        ui.tabChatPDF.addEventListener('click', () => {
+            ui.viewChatPDF.classList.remove('hidden');
+            ui.viewWatermark.classList.add('hidden');
+            ui.tabChatPDF.classList.add('active');
+            ui.tabWatermark.classList.remove('active');
+        });
+        ui.tabWatermark.addEventListener('click', () => {
+            ui.viewChatPDF.classList.add('hidden');
+            ui.viewWatermark.classList.remove('hidden');
+            ui.tabChatPDF.classList.remove('active');
+            ui.tabWatermark.classList.add('active');
+        });
+        ui.wmImageUpload.addEventListener('change', (e) => {
+            uploadedImage = e.target.files[0];
+            ui.wmOriginalPreview.src = URL.createObjectURL(uploadedImage);
+            if (uploadedMask) ui.wmRemoveButton.disabled = false;
+        });
+        ui.wmMaskUpload.addEventListener('change', (e) => {
+            uploadedMask = e.target.files[0];
+            if (uploadedImage) ui.wmRemoveButton.disabled = false;
+        });
+        ui.wmRemoveButton.addEventListener('click', removeWatermark);
         
-        // --- INITIALIZE ---
         connect();
     </script>
 </body>
