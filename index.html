@@ -87,9 +87,7 @@
                  <footer class="col-span-2 bg-white p-4 rounded-lg shadow-md flex items-center justify-center space-x-4">
                     <label for="wm-image-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">1. Upload Image</label>
                     <input id="wm-image-upload" type="file" class="hidden" accept="image/*">
-                    <label for="wm-mask-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">2. Upload Mask</label>
-                    <input id="wm-mask-upload" type="file" class="hidden" accept="image/*">
-                    <button id="wm-remove-button" class="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600" disabled>3. Remove Watermark</button>
+                    <button id="wm-remove-button" class="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600" disabled>2. Remove Watermark</button>
                  </footer>
             </div>
         </div>
@@ -116,11 +114,9 @@
             viewChatPDF: document.getElementById('view-chatpdf'),
             viewWatermark: document.getElementById('view-watermark'),
             wmImageUpload: document.getElementById('wm-image-upload'),
-            wmMaskUpload: document.getElementById('wm-mask-upload'),
             wmRemoveButton: document.getElementById('wm-remove-button'),
             wmOriginalPreview: document.getElementById('wm-original-preview'),
             wmResultPreview: document.getElementById('wm-result-preview'),
-            wmResultContainer: document.getElementById('wm-result-container'),
         };
         
         // --- APP STATE ---
@@ -132,7 +128,6 @@
             localStorage.setItem('chatpdf_user_id', userId);
         }
         let uploadedImage = null;
-        let uploadedMask = null;
 
         // --- WEBSOCKET SETUP ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -220,14 +215,14 @@
                     ui.wmResultPreview.src = `data:image/png;base64,${message.data}`;
                     ui.status.textContent = 'Status: Watermark removed successfully!';
                     ui.wmRemoveButton.disabled = false;
-                    ui.wmRemoveButton.textContent = '3. Remove Watermark';
+                    ui.wmRemoveButton.textContent = '2. Remove Watermark';
                     break;
             }
         }
 
         // --- UI HELPER FUNCTIONS ---
         function addMessage(text, sender) {
-            if (ui.viewChatPDF.classList.contains('hidden')) return; // Don't add messages to hidden chat
+            if (ui.viewChatPDF.classList.contains('hidden') && sender !== 'system') return;
             currentChatHistory.push({ sender, text });
             ui.saveChatButton.disabled = currentChatHistory.length === 0;
             const bubble = document.createElement('div');
@@ -318,8 +313,8 @@
         }
 
         async function removeWatermark() {
-            if (!uploadedImage || !uploadedMask) {
-                alert("Please upload both an image and a mask file.");
+            if (!uploadedImage) {
+                alert("Please upload an image first.");
                 return;
             }
             ui.status.textContent = 'Status: Removing watermark...';
@@ -327,12 +322,10 @@
             ui.wmRemoveButton.textContent = 'Processing...';
 
             const image_base64 = await fileToBase64(uploadedImage);
-            const mask_base64 = await fileToBase64(uploadedMask);
 
             socket.send(JSON.stringify({
-                type: 'remove_watermark',
-                image: image_base64,
-                mask: mask_base64
+                type: 'remove_watermark_auto',
+                image: image_base64
             }));
         }
 
@@ -363,11 +356,7 @@
         ui.wmImageUpload.addEventListener('change', (e) => {
             uploadedImage = e.target.files[0];
             ui.wmOriginalPreview.src = URL.createObjectURL(uploadedImage);
-            if (uploadedMask) ui.wmRemoveButton.disabled = false;
-        });
-        ui.wmMaskUpload.addEventListener('change', (e) => {
-            uploadedMask = e.target.files[0];
-            if (uploadedImage) ui.wmRemoveButton.disabled = false;
+            ui.wmRemoveButton.disabled = false;
         });
         ui.wmRemoveButton.addEventListener('click', removeWatermark);
         
