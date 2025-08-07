@@ -12,7 +12,6 @@
         .ai-bubble { background-color: #e5e7eb; color: #1f2937; }
         #chat-sidebar { transition: transform 0.3s ease-in-out; }
         .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
-        #paint-canvas { cursor: crosshair; }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
@@ -76,25 +75,19 @@
             <!-- Watermark Remover View (Hidden by default) -->
             <div id="view-watermark" class="hidden flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
                  <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden items-center justify-center p-4">
-                    <h2 class="text-lg font-bold text-gray-700 mb-2">1. Upload & Paint Over Watermark</h2>
-                    <div id="canvas-container" class="w-full h-full flex items-center justify-center bg-gray-200 rounded-md">
-                        <canvas id="paint-canvas"></canvas>
-                    </div>
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">Original Image</h2>
+                    <img id="wm-original-preview" src="https://placehold.co/600x400/e2e8f0/475569?text=Upload+Image" class="max-w-full max-h-full object-contain rounded-md">
                  </section>
                  <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden items-center justify-center p-4">
-                    <h2 class="text-lg font-bold text-gray-700 mb-2">Result</h2>
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">Result</h2>
                     <div id="wm-result-container" class="w-full h-full flex items-center justify-center">
                         <img id="wm-result-preview" src="https://placehold.co/600x400/e2e8f0/475569?text=Result+Appears+Here" class="max-w-full max-h-full object-contain rounded-md">
                     </div>
                  </section>
                  <footer class="col-span-2 bg-white p-4 rounded-lg shadow-md flex items-center justify-center space-x-4">
-                    <label for="wm-image-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">Upload Image</label>
+                    <label for="wm-image-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">1. Upload Image</label>
                     <input id="wm-image-upload" type="file" class="hidden" accept="image/*">
-                    <div class="flex items-center space-x-2">
-                        <label for="brush-size">Brush Size:</label>
-                        <input type="range" id="brush-size" min="5" max="100" value="20">
-                    </div>
-                    <button id="wm-remove-button" class="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600" disabled>Remove Watermark</button>
+                    <button id="wm-remove-button" class="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600" disabled>2. Remove Watermark</button>
                  </footer>
             </div>
         </div>
@@ -124,8 +117,6 @@
             wmRemoveButton: document.getElementById('wm-remove-button'),
             wmOriginalPreview: document.getElementById('wm-original-preview'),
             wmResultPreview: document.getElementById('wm-result-preview'),
-            canvas: document.getElementById('paint-canvas'),
-            canvasContainer: document.getElementById('canvas-container'),
         };
         
         // --- APP STATE ---
@@ -138,52 +129,7 @@
         }
         let uploadedImage = null;
         const SERVER_URL = window.location.origin;
-        let isPainting = false;
-        let originalImageForInpainting = null;
 
-        // --- CANVAS SETUP ---
-        const ctx = ui.canvas.getContext('2d');
-        
-        function resizeCanvas(image) {
-            const ratio = image.width / image.height;
-            const containerWidth = ui.canvasContainer.clientWidth;
-            const containerHeight = ui.canvasContainer.clientHeight;
-            let newWidth = containerWidth;
-            let newHeight = newWidth / ratio;
-            if (newHeight > containerHeight) {
-                newHeight = containerHeight;
-                newWidth = newHeight * ratio;
-            }
-            ui.canvas.width = newWidth;
-            ui.canvas.height = newHeight;
-            ctx.drawImage(image, 0, 0, newWidth, newHeight);
-        }
-
-        function getMousePos(e) {
-            const rect = ui.canvas.getBoundingClientRect();
-            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        }
-
-        ui.canvas.addEventListener('mousedown', (e) => {
-            if (!originalImageForInpainting) return;
-            isPainting = true;
-            const pos = getMousePos(e);
-            ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y);
-        });
-
-        ui.canvas.addEventListener('mousemove', (e) => {
-            if (!isPainting) return;
-            const pos = getMousePos(e);
-            ctx.lineWidth = document.getElementById('brush-size').value;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = 'white';
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-        });
-
-        window.addEventListener('mouseup', () => { isPainting = false; });
-        
         // --- WEBSOCKET & STATUS POLLING ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
@@ -288,7 +234,7 @@
                     ui.wmResultPreview.src = `data:image/png;base64,${message.data}`;
                     ui.status.textContent = 'Status: Watermark removed successfully!';
                     ui.wmRemoveButton.disabled = false;
-                    ui.wmRemoveButton.textContent = 'Remove Watermark';
+                    ui.wmRemoveButton.textContent = '2. Remove Watermark';
                     break;
             }
         }
@@ -381,26 +327,16 @@
         }
 
         async function removeWatermark() {
-            if (!originalImageForInpainting) {
+            if (!uploadedImage) {
                 alert("Please upload an image first.");
                 return;
             }
-            setUIState('ai_thinking', 'Removing watermark...');
+            ui.status.textContent = 'Status: Removing watermark...';
             ui.wmRemoveButton.disabled = true;
             ui.wmRemoveButton.textContent = 'Processing...';
 
-            // Create the mask from the canvas, scaled to the original image dimensions
-            const maskCanvas = document.createElement('canvas');
-            maskCanvas.width = originalImageForInpainting.width;
-            maskCanvas.height = originalImageForInpainting.height;
-            const maskCtx = maskCanvas.getContext('2d');
-            maskCtx.drawImage(ui.canvas, 0, 0, originalImageForInpainting.width, originalImageForInpainting.height);
-            const maskData = maskCanvas.toDataURL('image/png');
-
             const formData = new FormData();
-            formData.append('image', uploadedImage);
-            formData.append('mask', await (await fetch(maskData)).blob());
-
+            formData.append('file', uploadedImage);
             try {
                 const response = await fetch(`/remove_watermark/${userId}`, { method: 'POST', body: formData });
                 const result = await response.json();
@@ -408,7 +344,9 @@
                 // The result will be handled by the WebSocket message
             } catch (error) {
                 addMessage(`Error: ${error.message}`, 'system');
-                setUIState('worker_ready', 'Error removing watermark.');
+                ui.status.textContent = 'Status: Error removing watermark.';
+                ui.wmRemoveButton.disabled = false;
+                ui.wmRemoveButton.textContent = '2. Remove Watermark';
             }
         }
 
@@ -438,17 +376,8 @@
         });
         ui.wmImageUpload.addEventListener('change', (e) => {
             uploadedImage = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    originalImageForInpainting = img;
-                    resizeCanvas(img);
-                    ui.wmRemoveButton.disabled = false;
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(uploadedImage);
+            ui.wmOriginalPreview.src = URL.createObjectURL(uploadedImage);
+            ui.wmRemoveButton.disabled = false;
         });
         ui.wmRemoveButton.addEventListener('click', removeWatermark);
         
