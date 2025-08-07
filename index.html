@@ -24,7 +24,7 @@
         <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20">
             <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
                 <h2 class="text-xl font-bold">Saved Chats</h2>
-                <button id="close-sidebar-button" class="text-slate-400 hover:text-white">&times;</button>
+                <button id="close-sidebar-button" class="text-slate-400 hover:text-white text-2xl">&times;</button>
             </div>
             <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2">
                 <!-- Saved chats will be added here -->
@@ -102,11 +102,12 @@
             userId = 'user_' + Math.random().toString(36).substr(2, 9);
             localStorage.setItem('chatpdf_user_id', userId);
         }
-        const SERVER_URL = window.location.origin;
+        console.log("User ID:", userId);
+
+        // --- WEBSOCKET SETUP ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
         let socket;
-        let statusInterval;
 
         // --- UI STATE MANAGEMENT ---
         function setUIState(state, message = "") {
@@ -135,34 +136,16 @@
             }
         }
 
-        // --- WEBSOCKET & STATUS POLLING LOGIC ---
-        async function checkWorkerStatus() {
-            try {
-                const response = await fetch(`${SERVER_URL}/status`);
-                const data = await response.json();
-                if (data.worker_connected) {
-                    setUIState('worker_ready', 'AI worker connected. Ready to upload.');
-                    clearInterval(statusInterval); // Stop polling once connected
-                    connectWebSocket(); // Now connect the WebSocket
-                } else {
-                    setUIState('waiting_for_worker', 'Waiting for local AI worker...');
-                }
-            } catch (error) {
-                console.error("Status check failed:", error);
-                setUIState('error', 'Could not connect to server.');
-            }
-        }
-
-        function connectWebSocket() {
+        // --- WEBSOCKET LOGIC ---
+        function connect() {
             socket = new WebSocket(wsUrl);
-            socket.onopen = () => {
-                console.log("WebSocket connected.");
-                socket.send(JSON.stringify({ type: 'list_chats' }));
-            };
+            setUIState('connecting', 'Connecting to server...');
+
+            socket.onopen = () => console.log("Connected to server.");
             socket.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
             socket.onclose = () => {
-                setUIState('disconnected', 'Disconnected. Restarting status check...');
-                statusInterval = setInterval(checkWorkerStatus, 3000); // Restart polling
+                setUIState('disconnected', 'Disconnected. Retrying...');
+                setTimeout(connect, 3000);
             };
             socket.onerror = (error) => {
                 console.error("WebSocket Error:", error);
@@ -174,7 +157,11 @@
             switch (message.type) {
                 case 'status':
                     addMessage(message.data, 'ai');
-                    if (message.data.includes("Ready for questions")) {
+                    if (message.data.includes("Waiting for local AI worker")) {
+                        setUIState('waiting_for_worker', 'Waiting for local AI worker...');
+                    } else if (message.data.includes("AI worker connected")) {
+                        setUIState('worker_ready', 'AI worker connected. Ready to upload.');
+                    } else if (message.data.includes("Ready for questions")) {
                         setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                     }
                     break;
@@ -184,13 +171,30 @@
                     break;
                 case 'error':
                     addMessage(`Error: ${message.data}`, 'ai');
-                    setUIState('worker_ready', 'Error. Please try uploading again.');
+                    setUIState('worker_ready', 'Error. Please try again.');
                     break;
                 case 'chat_list':
                     renderChatList(message.data);
                     break;
                 case 'load_chat':
-                    renderChatHistory(message.data);
+                    // --- NEW: Handle the combined chat and PDF data ---
+                    const { history, pdf_data, pdf_name } = message.data;
+                    currentPDFName = pdf_name;
+                    ui.pdfTitle.textContent = currentPDFName;
+                    
+                    // Convert base64 PDF data to a Blob and create a URL for the viewer
+                    const byteCharacters = atob(pdf_data);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], {type: 'application/pdf'});
+                    const objectURL = URL.createObjectURL(blob);
+                    ui.pdfViewer.src = objectURL;
+
+                    renderChatHistory(history);
+                    setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                     break;
             }
         }
@@ -272,8 +276,7 @@
         });
         
         // --- INITIALIZE ---
-        statusInterval = setInterval(checkWorkerStatus, 3000);
-        checkWorkerStatus(); // Initial check
+        connect();
     </script>
 </body>
 </html>
