@@ -128,13 +128,14 @@
             localStorage.setItem('chatpdf_user_id', userId);
         }
         let uploadedImage = null;
+        const SERVER_URL = window.location.origin;
 
-        // --- WEBSOCKET SETUP ---
+        // --- WEBSOCKET & STATUS POLLING ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
         let socket;
+        let statusInterval;
 
-        // --- UI STATE MANAGEMENT ---
         function setUIState(state, message = "") {
             ui.status.textContent = `Status: ${message}`;
             const isChatReady = state === 'ready_to_chat';
@@ -163,15 +164,33 @@
             }
         }
 
-        // --- WEBSOCKET LOGIC ---
-        function connect() {
+        async function checkWorkerStatus() {
+            try {
+                const response = await fetch(`${SERVER_URL}/status`);
+                const data = await response.json();
+                if (data.worker_connected) {
+                    setUIState('worker_ready', 'AI worker connected. Ready to upload.');
+                    clearInterval(statusInterval);
+                    connectWebSocket();
+                } else {
+                    setUIState('waiting_for_worker', 'Waiting for local AI worker...');
+                }
+            } catch (error) {
+                console.error("Status check failed:", error);
+                setUIState('error', 'Could not connect to server.');
+            }
+        }
+
+        function connectWebSocket() {
             socket = new WebSocket(wsUrl);
-            setUIState('connecting', 'Connecting to server...');
-            socket.onopen = () => console.log("Connected to server.");
+            socket.onopen = () => {
+                console.log("WebSocket connected.");
+                socket.send(JSON.stringify({ type: 'list_chats' }));
+            };
             socket.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
             socket.onclose = () => {
-                setUIState('disconnected', 'Disconnected. Retrying...');
-                setTimeout(connect, 3000);
+                setUIState('disconnected', 'Disconnected. Restarting status check...');
+                statusInterval = setInterval(checkWorkerStatus, 3000);
             };
             socket.onerror = (error) => {
                 console.error("WebSocket Error:", error);
@@ -183,9 +202,9 @@
             switch (message.type) {
                 case 'status':
                     addMessage(message.data, 'ai');
-                    if (message.data.includes("Waiting for local AI worker")) setUIState('waiting_for_worker', 'Waiting for local AI worker...');
-                    else if (message.data.includes("AI worker connected")) setUIState('worker_ready', 'AI worker connected. Ready to upload.');
-                    else if (message.data.includes("Ready for questions")) setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    if (message.data.includes("Ready for questions")) {
+                        setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    }
                     break;
                 case 'answer':
                     addMessage(message.data, 'ai');
@@ -220,7 +239,6 @@
             }
         }
 
-        // --- UI HELPER FUNCTIONS ---
         function addMessage(text, sender) {
             if (ui.viewChatPDF.classList.contains('hidden') && sender !== 'system') return;
             currentChatHistory.push({ sender, text });
@@ -266,8 +284,7 @@
             ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
         }
 
-        // --- EVENT HANDLERS ---
-        function uploadPDF() {
+        async function uploadPDF() {
             const file = ui.pdfUploadInput.files[0];
             if (!file) return;
             ui.chatContainer.innerHTML = '';
@@ -277,12 +294,18 @@
             ui.pdfViewer.src = URL.createObjectURL(file);
             setUIState('processing', `Processing '${file.name}'...`);
             addMessage(`Uploading ${file.name}...`, 'ai');
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const file_content_base64 = e.target.result.split(',')[1];
-                socket.send(JSON.stringify({ type: 'upload', data: file_content_base64, filename: currentPDFName }));
-            };
-            reader.readAsDataURL(file);
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const response = await fetch(`/upload/${userId}`, { method: 'POST', body: formData });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || 'Failed to process PDF.');
+                addMessage(result.message, 'ai');
+            } catch (error) {
+                addMessage(`Error: ${error.message}`, 'ai');
+                setUIState('worker_ready', 'Upload failed. Please try again.');
+            }
         }
 
         function sendMessage() {
@@ -303,15 +326,6 @@
             loadSavedChats();
         }
 
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = error => reject(error);
-            });
-        }
-
         async function removeWatermark() {
             if (!uploadedImage) {
                 alert("Please upload an image first.");
@@ -321,12 +335,19 @@
             ui.wmRemoveButton.disabled = true;
             ui.wmRemoveButton.textContent = 'Processing...';
 
-            const image_base64 = await fileToBase64(uploadedImage);
-
-            socket.send(JSON.stringify({
-                type: 'remove_watermark_auto',
-                image: image_base64
-            }));
+            const formData = new FormData();
+            formData.append('file', uploadedImage);
+            try {
+                const response = await fetch(`/remove_watermark/${userId}`, { method: 'POST', body: formData });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || 'Failed to process image.');
+                addMessage(result.message, 'system');
+            } catch (error) {
+                addMessage(`Error: ${error.message}`, 'system');
+                ui.status.textContent = 'Status: Error removing watermark.';
+                ui.wmRemoveButton.disabled = false;
+                ui.wmRemoveButton.textContent = '2. Remove Watermark';
+            }
         }
 
         // --- INITIALIZE ---
@@ -360,7 +381,8 @@
         });
         ui.wmRemoveButton.addEventListener('click', removeWatermark);
         
-        connect();
+        statusInterval = setInterval(checkWorkerStatus, 3000);
+        checkWorkerStatus();
     </script>
 </body>
 </html>
