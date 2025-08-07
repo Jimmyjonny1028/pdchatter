@@ -53,6 +53,7 @@ async def get_homepage():
 async def get_status():
     return {"worker_connected": manager.local_worker is not None}
 
+# --- NEW: Dedicated HTTP endpoint for PDF uploads ---
 @app.post("/upload/{user_id}")
 async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     if not manager.local_worker:
@@ -65,7 +66,7 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     }))
     return {"message": "File sent to worker for processing."}
 
-# --- THIS IS THE NEW, CRITICAL ENDPOINT ---
+# --- NEW: Dedicated HTTP endpoint for Watermark Remover uploads ---
 @app.post("/remove_watermark/{user_id}")
 async def http_remove_watermark(user_id: str, file: UploadFile = File(...)):
     if not manager.local_worker:
@@ -94,6 +95,7 @@ async def web_client_websocket(websocket: WebSocket, user_id: str):
     await manager.connect_web_client(websocket, user_id)
     try:
         while True:
+            # WebSocket is now only for questions and chat management
             data_text = await websocket.receive_text()
             data = json.loads(data_text)
             data['user_id'] = user_id
