@@ -105,7 +105,7 @@
             userId = 'user_' + Math.random().toString(36).substr(2, 9);
             localStorage.setItem('chatpdf_user_id', userId);
         }
-        console.log("User ID:", userId);
+        let workerHasConnectedBefore = false; // --- THIS IS THE FIX ---
 
         // --- WEBSOCKET SETUP ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -150,6 +150,7 @@
             socket.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
             socket.onclose = () => {
                 setUIState('disconnected', 'Disconnected. Retrying...');
+                workerHasConnectedBefore = false; // Reset on disconnect
                 setTimeout(connect, 3000);
             };
             socket.onerror = (error) => {
@@ -161,13 +162,22 @@
         function handleServerMessage(message) {
             switch (message.type) {
                 case 'status':
-                    addMessage(message.data, 'ai');
-                    if (message.data.includes("Waiting for local AI worker")) {
-                        setUIState('waiting_for_worker', 'Waiting for local AI worker...');
-                    } else if (message.data.includes("AI worker connected")) {
+                    // --- THIS IS THE FIX ---
+                    // Only add the "worker connected" message to the chat ONCE.
+                    if (message.data.includes("AI worker connected")) {
+                        if (!workerHasConnectedBefore) {
+                            addMessage(message.data, 'ai');
+                            workerHasConnectedBefore = true;
+                        }
                         setUIState('worker_ready', 'AI worker connected. Ready to upload.');
-                    } else if (message.data.includes("Ready for questions")) {
-                        setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    } else {
+                        // For all other status messages, add them to the chat.
+                        addMessage(message.data, 'ai');
+                        if (message.data.includes("Waiting for local AI worker")) {
+                            setUIState('waiting_for_worker', 'Waiting for local AI worker...');
+                        } else if (message.data.includes("Ready for questions")) {
+                            setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                        }
                     }
                     break;
                 case 'answer':
@@ -204,11 +214,8 @@
 
         // --- UI HELPER FUNCTIONS ---
         function addMessage(text, sender) {
-            // Add to in-memory history
             currentChatHistory.push({ sender, text });
             ui.saveChatButton.disabled = currentChatHistory.length === 0;
-
-            // Add to visual chat display
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
             if (sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
@@ -238,9 +245,8 @@
         
         function renderChatHistory(history) {
             ui.chatContainer.innerHTML = '';
-            currentChatHistory = history; // Set the in-memory history
+            currentChatHistory = history;
             history.forEach(msg => {
-                // Re-render without adding to history again
                 const bubble = document.createElement('div');
                 bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
                 if (msg.sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
@@ -282,6 +288,42 @@
             ui.messageInput.value = '';
             setUIState('ai_thinking', 'AI is thinking...');
         }
+        
+        function saveChat() {
+            const chatName = currentPDFName || 'Chat';
+            const timestamp = new Date().toLocaleString();
+            const key = `chat_${Date.now()}`;
+            
+            localStorage.setItem(key, JSON.stringify({
+                name: `${chatName} - ${timestamp}`,
+                history: currentChatHistory,
+                pdfName: currentPDFName
+            }));
+            
+            addMessage('Chat saved to your browser\'s local storage.', 'ai');
+            loadSavedChats();
+        }
+
+        function loadSavedChats() {
+            ui.savedChatsList.innerHTML = '';
+            const keys = Object.keys(localStorage).filter(k => k.startsWith('chat_'));
+            if (keys.length === 0) {
+                ui.savedChatsList.innerHTML = '<p class="text-slate-400">No saved chats yet.</p>';
+                return;
+            }
+            
+            keys.forEach(key => {
+                const savedData = JSON.parse(localStorage.getItem(key));
+                const item = document.createElement('div');
+                item.classList.add('p-2', 'bg-slate-700', 'rounded-md', 'cursor-pointer', 'hover:bg-slate-600', 'truncate');
+                item.textContent = savedData.name;
+                item.onclick = () => {
+                    socket.send(JSON.stringify({ type: 'load_chat', data: savedData.pdfName }));
+                    ui.sidebar.classList.add('-translate-x-full');
+                };
+                ui.savedChatsList.appendChild(item);
+            });
+        }
 
         ui.openSidebarButton.addEventListener('click', () => {
             socket.send(JSON.stringify({ type: 'list_chats' }));
@@ -290,6 +332,7 @@
         ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
         ui.pdfUploadInput.addEventListener('change', uploadPDF);
         ui.sendButton.addEventListener('click', sendMessage);
+        ui.saveChatButton.addEventListener('click', saveChat);
         ui.messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') sendMessage();
         });
