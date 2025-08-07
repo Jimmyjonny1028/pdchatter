@@ -69,6 +69,7 @@
                                 </div>
                                 <input type="text" id="message-input" class="flex-1 border border-gray-300 rounded-lg p-2" placeholder="Please connect to worker..." disabled>
                                 <button id="send-button" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
+                                <button id="save-chat-button" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-600 transition-colors" disabled>Save</button>
                             </div>
                         </footer>
                     </div>
@@ -92,11 +93,13 @@
             sidebar: document.getElementById('chat-sidebar'),
             openSidebarButton: document.getElementById('open-sidebar-button'),
             closeSidebarButton: document.getElementById('close-sidebar-button'),
+            saveChatButton: document.getElementById('save-chat-button'),
             savedChatsList: document.getElementById('saved-chats-list'),
         };
         
         // --- APP STATE ---
         let currentPDFName = "";
+        let currentChatHistory = [];
         let userId = localStorage.getItem('chatpdf_user_id');
         if (!userId) {
             userId = 'user_' + Math.random().toString(36).substr(2, 9);
@@ -124,6 +127,8 @@
 
             ui.messageInput.disabled = !isChatReady;
             ui.sendButton.disabled = !isChatReady;
+            ui.saveChatButton.disabled = !isChatReady || currentChatHistory.length === 0;
+
             if (isChatReady) {
                 ui.messageInput.placeholder = "Ask a question about the PDF...";
                 ui.sendButton.classList.remove('bg-gray-400');
@@ -177,12 +182,10 @@
                     renderChatList(message.data);
                     break;
                 case 'load_chat':
-                    // --- NEW: Handle the combined chat and PDF data ---
                     const { history, pdf_data, pdf_name } = message.data;
                     currentPDFName = pdf_name;
                     ui.pdfTitle.textContent = currentPDFName;
                     
-                    // Convert base64 PDF data to a Blob and create a URL for the viewer
                     const byteCharacters = atob(pdf_data);
                     const byteNumbers = new Array(byteCharacters.length);
                     for (let i = 0; i < byteCharacters.length; i++) {
@@ -201,6 +204,11 @@
 
         // --- UI HELPER FUNCTIONS ---
         function addMessage(text, sender) {
+            // Add to in-memory history
+            currentChatHistory.push({ sender, text });
+            ui.saveChatButton.disabled = currentChatHistory.length === 0;
+
+            // Add to visual chat display
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
             if (sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
@@ -230,7 +238,17 @@
         
         function renderChatHistory(history) {
             ui.chatContainer.innerHTML = '';
-            history.forEach(msg => addMessage(msg.text, msg.sender));
+            currentChatHistory = history; // Set the in-memory history
+            history.forEach(msg => {
+                // Re-render without adding to history again
+                const bubble = document.createElement('div');
+                bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
+                if (msg.sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+                else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                bubble.textContent = msg.text;
+                ui.chatContainer.appendChild(bubble);
+            });
+            ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
         }
 
         // --- EVENT HANDLERS ---
@@ -239,6 +257,7 @@
             if (!file) return;
 
             ui.chatContainer.innerHTML = '';
+            currentChatHistory = [];
             currentPDFName = file.name;
             ui.pdfTitle.textContent = currentPDFName;
             ui.pdfViewer.src = URL.createObjectURL(file);
