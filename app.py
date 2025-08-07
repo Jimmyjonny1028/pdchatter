@@ -1,4 +1,3 @@
-# File: server.py (for Render)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 import uvicorn
@@ -53,7 +52,6 @@ class ConnectionManager:
         except Exception as e:
             print(f"Error forwarding to web client: {e}")
 
-
 manager = ConnectionManager()
 
 @app.get("/")
@@ -93,6 +91,3 @@ async def web_client_websocket(websocket: WebSocket, user_id: str):
     except WebSocketDisconnect:
         manager.disconnect_web_client(user_id)
         print(f"Web client {user_id} disconnected.")
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
