@@ -1,3 +1,11 @@
 fastapi
 uvicorn[standard]
-websockets
+python-multipart
+google-generativeai
+python-dotenv
+PyMuPDF
+pytesseract
+Pillow
+numpy
+scikit-learn
+pydantic
