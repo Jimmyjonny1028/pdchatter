@@ -1,265 +1,366 @@
-# File: worker.py (for your Local PC)
-import asyncio
-import websockets
-import json
-import fitz
-import numpy as np
-from PIL import Image
-import pytesseract
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
-import re
-import base64
-import torch
-import cv2
-from io import BytesIO
-import sys
-from omegaconf import OmegaConf
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chat-bubble { max-width: 90%; word-wrap: break-word; }
+        .user-bubble { background-color: #3b82f6; color: white; }
+        .ai-bubble { background-color: #e5e7eb; color: #1f2937; }
+        #chat-sidebar { transition: transform 0.3s ease-in-out; }
+        .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
 
-# --- LaMa Model Integration ---
-LAMA_PROJECT_PATH = "C:/Users/User/lama" 
-sys.path.append(LAMA_PROJECT_PATH)
-try:
-    from saic_vision.training.trainers import load_checkpoint
-    from saic_vision.evaluation.utils import move_to_device, load_image
-    from saic_vision.models.inpainting import InpaintingModel
-    print("Successfully imported LaMa project files.")
-except ImportError as e:
-    print(f"Could not import LaMa project files. Make sure the LAMA_PROJECT_PATH is correct. Error: {e}")
-    InpaintingModel = None
+    <div class="flex h-full">
+        <!-- Chat History Sidebar -->
+        <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
+                <h2 class="text-xl font-bold">Saved Chats</h2>
+                <button id="close-sidebar-button" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2"></div>
+        </aside>
 
-# --- CONFIGURATION & INITIALIZATION ---
-load_dotenv()
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found in .env file.")
-genai.configure(api_key=GOOGLE_API_KEY)
-try:
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-except Exception:
-    pass
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col h-full">
+             <header class="bg-white shadow-md p-4 flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </button>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">AI Toolkit</h1>
+                        <p id="status" class="text-sm text-gray-500">Status: Connecting to server...</p>
+                    </div>
+                </div>
+                <div class="border-b-2 border-transparent">
+                    <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none active">ChatPDF</button>
+                    <button id="tab-watermark" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none">Watermark Remover</button>
+                </div>
+            </header>
 
-print("Initializing Gemini model...")
-llm_model_name = 'gemini-1.5-flash-latest'
-llm_model = genai.GenerativeModel(llm_model_name)
-print("Gemini model initialized.")
+            <!-- ChatPDF View -->
+            <div id="view-chatpdf" class="flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
+                <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden">
+                    <div class="p-2 border-b bg-gray-50"><h2 id="pdf-title" class="text-lg font-bold text-gray-700 truncate">PDF Preview</h2></div>
+                    <div class="flex-1 p-2"><embed id="pdf-viewer" src="" type="application/pdf" width="100%" height="100%"/></div>
+                </section>
+                <section class="flex flex-col h-full overflow-hidden">
+                    <div class="bg-white rounded-lg shadow-md flex flex-col flex-1">
+                        <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4"></main>
+                        <footer class="bg-white p-4 border-t">
+                            <div class="flex items-center space-x-4">
+                                <div>
+                                    <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-400 text-white font-bold py-2 px-4 rounded-lg">📁 Upload PDF</label>
+                                    <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
+                                </div>
+                                <input type="text" id="message-input" class="flex-1 border border-gray-300 rounded-lg p-2" placeholder="Please connect to worker..." disabled>
+                                <button id="send-button" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
+                                <button id="save-chat-button" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Save</button>
+                            </div>
+                        </footer>
+                    </div>
+                </section>
+            </div>
 
-# --- Load the LaMa Watermark Removal Model ---
-inpainting_model = None
-if InpaintingModel:
-    try:
-        print("Loading LaMa watermark removal model...")
-        model_path = "C:/Users/User/lama/models/best.ckpt"
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+            <!-- Watermark Remover View (Hidden by default) -->
+            <div id="view-watermark" class="hidden flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
+                 <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden items-center justify-center p-4">
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">Original Image</h2>
+                    <img id="wm-original-preview" src="https://placehold.co/600x400/e2e8f0/475569?text=Upload+Image" class="max-w-full max-h-full object-contain rounded-md">
+                 </section>
+                 <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden items-center justify-center p-4">
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">Result</h2>
+                    <div id="wm-result-container" class="w-full h-full flex items-center justify-center">
+                        <img id="wm-result-preview" src="https://placehold.co/600x400/e2e8f0/475569?text=Result+Appears+Here" class="max-w-full max-h-full object-contain rounded-md">
+                    </div>
+                 </section>
+                 <footer class="col-span-2 bg-white p-4 rounded-lg shadow-md flex items-center justify-center space-x-4">
+                    <label for="wm-image-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">1. Upload Image</label>
+                    <input id="wm-image-upload" type="file" class="hidden" accept="image/*">
+                    <button id="wm-remove-button" class="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600" disabled>2. Remove Watermark</button>
+                 </footer>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- UI ELEMENTS ---
+        const ui = {
+            chatContainer: document.getElementById('chat-container'),
+            messageInput: document.getElementById('message-input'),
+            sendButton: document.getElementById('send-button'),
+            pdfUploadInput: document.getElementById('pdf-upload'),
+            uploadLabel: document.getElementById('upload-label'),
+            status: document.getElementById('status'),
+            pdfViewer: document.getElementById('pdf-viewer'),
+            pdfTitle: document.getElementById('pdf-title'),
+            sidebar: document.getElementById('chat-sidebar'),
+            openSidebarButton: document.getElementById('open-sidebar-button'),
+            closeSidebarButton: document.getElementById('close-sidebar-button'),
+            saveChatButton: document.getElementById('save-chat-button'),
+            savedChatsList: document.getElementById('saved-chats-list'),
+            tabChatPDF: document.getElementById('tab-chatpdf'),
+            tabWatermark: document.getElementById('tab-watermark'),
+            viewChatPDF: document.getElementById('view-chatpdf'),
+            viewWatermark: document.getElementById('view-watermark'),
+            wmImageUpload: document.getElementById('wm-image-upload'),
+            wmRemoveButton: document.getElementById('wm-remove-button'),
+            wmOriginalPreview: document.getElementById('wm-original-preview'),
+            wmResultPreview: document.getElementById('wm-result-preview'),
+        };
         
-        train_config_str = "model:\n  kind: default\n  _target_: saic_vision.models.inpainting.InpaintingModel"
-        train_config = OmegaConf.create(train_config_str)
-        
-        inpainting_model = InpaintingModel(train_config.model)
-        load_checkpoint(inpainting_model, model_path, map_location='cpu', strict=False)
-        inpainting_model.to(device)
-        inpainting_model.eval()
-        print(f"LaMa model '{model_path}' loaded successfully to device: {device}")
-    except Exception as e:
-        print(f"Error loading LaMa model: {e}")
-        inpainting_model = None
-
-# --- File-based chat history management ---
-CHAT_HISTORY_DIR = "chat_histories"
-PDF_STORAGE_DIR = "uploaded_pdfs"
-os.makedirs(CHAT_HISTORY_DIR, exist_ok=True)
-os.makedirs(PDF_STORAGE_DIR, exist_ok=True)
-user_sessions = {}
-
-# --- CORE AI FUNCTIONS ---
-def process_pdf(pdf_content: bytes, filename: str, user_id: str):
-    global user_sessions
-    try:
-        session_key = f"{user_id}_{filename}"
-        user_sessions[user_id] = {"session_key": session_key, "full_text": ""}
-
-        pdf_path = os.path.join(PDF_STORAGE_DIR, f"{session_key}.pdf")
-        with open(pdf_path, "wb") as f:
-            f.write(pdf_content)
-
-        doc = fitz.open(stream=pdf_content, filetype="pdf")
-        full_text = "".join(page.get_text("text") for page in doc)
-        if len(full_text.strip()) < 100:
-            full_text = ""
-            for page in doc:
-                pix = page.get_pixmap(dpi=300)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                full_text += pytesseract.image_to_string(img) + "\n"
-        doc.close()
-
-        if not full_text.strip():
-            return {"type": "error", "data": "Could not extract any text from the PDF.", "user_id": user_id}
-
-        user_sessions[user_id]["full_text"] = full_text
-        
-        chat_history_path = os.path.join(CHAT_HISTORY_DIR, f"{session_key}.json")
-        with open(chat_history_path, 'w') as f:
-            json.dump([], f)
-
-        return {"type": "status", "data": "PDF processed successfully. Ready for questions.", "user_id": user_id}
-    except Exception as e:
-        return {"type": "error", "data": str(e), "user_id": user_id}
-
-def ask_question(question: str, user_id: str):
-    global user_sessions
-    try:
-        session = user_sessions.get(user_id)
-        if not session or not session.get("full_text"):
-            return {"type": "error", "data": "No active session. Please upload a PDF first.", "user_id": user_id}
-
-        prompt = f"""
-        You are a helpful and precise assistant...
-        ---
-        {session['full_text']}
-        ---
-        **User Question:**
-        {question}
-        **Answer:**
-        """
-        
-        generation_config = genai.types.GenerationConfig(max_output_tokens=2048, temperature=0.25)
-        response = llm_model.generate_content(prompt, generation_config=generation_config)
-        
-        answer = response.text.strip() if response.parts else "The model did not provide a response."
-        
-        chat_history_path = os.path.join(CHAT_HISTORY_DIR, f"{session['session_key']}.json")
-        with open(chat_history_path, 'r+') as f:
-            history = json.load(f)
-            history.append({"sender": "user", "text": question})
-            history.append({"sender": "ai", "text": answer})
-            f.seek(0)
-            json.dump(history, f)
-
-        return {"type": "answer", "data": answer, "user_id": user_id}
-    except Exception as e:
-        return {"type": "error", "data": str(e), "user_id": user_id}
-
-def list_chats(user_id: str):
-    user_files = [f for f in os.listdir(CHAT_HISTORY_DIR) if f.startswith(user_id) and f.endswith('.json')]
-    chat_names = [f.replace(f"{user_id}_", "").replace(".json", "") for f in user_files]
-    return {"type": "chat_list", "data": chat_names, "user_id": user_id}
-
-def load_chat(chat_name: str, user_id: str):
-    session_key = f"{user_id}_{chat_name}"
-    chat_file_path = os.path.join(CHAT_HISTORY_DIR, f"{session_key}.json")
-    pdf_file_path = os.path.join(PDF_STORAGE_DIR, f"{session_key}.pdf")
-
-    if os.path.exists(chat_file_path) and os.path.exists(pdf_file_path):
-        with open(chat_file_path, 'r') as f:
-            history = json.load(f)
-        
-        with open(pdf_file_path, 'rb') as f:
-            pdf_data = f.read()
-            pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
-
-        process_pdf(pdf_data, chat_name, user_id)
-
-        return {
-            "type": "load_chat", 
-            "data": { "history": history, "pdf_data": pdf_base64, "pdf_name": chat_name }, 
-            "user_id": user_id
+        // --- APP STATE ---
+        let currentPDFName = "";
+        let currentChatHistory = [];
+        let userId = localStorage.getItem('chatpdf_user_id');
+        if (!userId) {
+            userId = 'user_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('chatpdf_user_id', userId);
         }
-    return {"type": "error", "data": "Chat history or PDF file not found.", "user_id": user_id}
+        let uploadedImage = null;
 
-def auto_detect_watermark(image: np.ndarray):
-    print("Auto-detecting watermark...")
-    mask = np.zeros(image.shape[:2], dtype=np.uint8)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.drawContours(mask, contours, -1, (255), thickness=cv2.FILLED)
-    kernel = np.ones((15,15), np.uint8)
-    mask = cv2.dilate(mask, kernel, iterations=1)
-    return mask
+        // --- WEBSOCKET SETUP ---
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
+        let socket;
 
-def remove_watermark_auto(image_data: bytes):
-    if not inpainting_model:
-        raise Exception("LaMa inpainting model is not loaded.")
+        // --- UI STATE MANAGEMENT ---
+        function setUIState(state, message = "") {
+            ui.status.textContent = `Status: ${message}`;
+            const isChatReady = state === 'ready_to_chat';
+            const isWorkerReady = state === 'worker_ready' || isChatReady;
+            
+            ui.pdfUploadInput.disabled = !isWorkerReady;
+            ui.uploadLabel.classList.toggle('bg-gray-400', !isWorkerReady);
+            ui.uploadLabel.classList.toggle('cursor-not-allowed', !isWorkerReady);
+            ui.uploadLabel.classList.toggle('bg-blue-500', isWorkerReady);
+            ui.uploadLabel.classList.toggle('hover:bg-blue-600', isWorkerReady);
+            ui.uploadLabel.classList.toggle('cursor-pointer', isWorkerReady);
 
-    print("Performing automatic watermark removal...")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    image_np = np.frombuffer(image_data, np.uint8)
-    image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
-    
-    mask = auto_detect_watermark(image)
-    
-    cv2.imwrite("temp_image.png", image)
-    cv2.imwrite("temp_mask.png", mask)
+            ui.messageInput.disabled = !isChatReady;
+            ui.sendButton.disabled = !isChatReady;
+            ui.saveChatButton.disabled = !isChatReady || currentChatHistory.length === 0;
 
-    batch = {}
-    batch['image'] = load_image("temp_image.png", mode='RGB')
-    batch['mask'] = load_image("temp_mask.png", mode='L')
-    
-    for k in batch:
-        if isinstance(batch[k], np.ndarray):
-            batch[k] = torch.from_numpy(batch[k]).permute(2, 0, 1).float()
-    
-    batch['mask'] = (batch['mask'] > 0) * 1
-    batch = move_to_device(batch, device)
+            if (isChatReady) {
+                ui.messageInput.placeholder = "Ask a question about the PDF...";
+                ui.sendButton.classList.remove('bg-gray-400');
+                ui.sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
+                ui.messageInput.focus();
+            } else {
+                ui.messageInput.placeholder = message;
+                ui.sendButton.classList.add('bg-gray-400');
+                ui.sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+            }
+        }
 
-    with torch.no_grad():
-        batch = inpainting_model(batch)
-    
-    inpainted_image_np = batch['inpainted'][0].permute(1, 2, 0).cpu().numpy()
-    inpainted_image_np = np.clip(inpainted_image_np * 255, 0, 255).astype('uint8')
-    
-    _, buffer = cv2.imencode('.png', cv2.cvtColor(inpainted_image_np, cv2.COLOR_RGB_BGR))
-    
-    os.remove("temp_image.png")
-    os.remove("temp_mask.png")
-    
-    return base64.b64encode(buffer).decode('utf-8')
+        // --- WEBSOCKET LOGIC ---
+        function connect() {
+            socket = new WebSocket(wsUrl);
+            setUIState('connecting', 'Connecting to server...');
+            socket.onopen = () => console.log("Connected to server.");
+            socket.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
+            socket.onclose = () => {
+                setUIState('disconnected', 'Disconnected. Retrying...');
+                setTimeout(connect, 3000);
+            };
+            socket.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+                socket.close();
+            };
+        }
 
+        function handleServerMessage(message) {
+            switch (message.type) {
+                case 'status':
+                    addMessage(message.data, 'ai');
+                    if (message.data.includes("Waiting for local AI worker")) setUIState('waiting_for_worker', 'Waiting for local AI worker...');
+                    else if (message.data.includes("AI worker connected")) setUIState('worker_ready', 'AI worker connected. Ready to upload.');
+                    else if (message.data.includes("Ready for questions")) setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    break;
+                case 'answer':
+                    addMessage(message.data, 'ai');
+                    setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    break;
+                case 'error':
+                    addMessage(`Error: ${message.data}`, 'ai');
+                    setUIState('worker_ready', 'Error. Please try again.');
+                    break;
+                case 'chat_list':
+                    renderChatList(message.data);
+                    break;
+                case 'load_chat':
+                    const { history, pdf_data, pdf_name } = message.data;
+                    currentPDFName = pdf_name;
+                    ui.pdfTitle.textContent = currentPDFName;
+                    const byteCharacters = atob(pdf_data);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], {type: 'application/pdf'});
+                    ui.pdfViewer.src = URL.createObjectURL(blob);
+                    renderChatHistory(history);
+                    setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    break;
+                case 'watermark_removed':
+                    ui.wmResultPreview.src = `data:image/png;base64,${message.data}`;
+                    ui.status.textContent = 'Status: Watermark removed successfully!';
+                    ui.wmRemoveButton.disabled = false;
+                    ui.wmRemoveButton.textContent = '2. Remove Watermark';
+                    break;
+            }
+        }
 
-# --- WEBSOCKET CLIENT LOGIC ---
-async def handle_task(websocket, task):
-    user_id = task.get("user_id")
-    if not user_id: return
+        // --- UI HELPER FUNCTIONS ---
+        function addMessage(text, sender) {
+            if (ui.viewChatPDF.classList.contains('hidden') && sender !== 'system') return;
+            currentChatHistory.push({ sender, text });
+            ui.saveChatButton.disabled = currentChatHistory.length === 0;
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
+            if (sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+            else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+            bubble.textContent = text;
+            ui.chatContainer.appendChild(bubble);
+            ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
+        }
+        
+        function renderChatList(chatNames) {
+            ui.savedChatsList.innerHTML = '';
+            if (chatNames.length === 0) {
+                ui.savedChatsList.innerHTML = '<p class="text-slate-400">No saved chats yet.</p>';
+                return;
+            }
+            chatNames.forEach(name => {
+                const item = document.createElement('div');
+                item.classList.add('p-2', 'bg-slate-700', 'rounded-md', 'cursor-pointer', 'hover:bg-slate-600', 'truncate');
+                item.textContent = name;
+                item.onclick = () => {
+                    socket.send(JSON.stringify({ type: 'load_chat', data: name }));
+                    ui.sidebar.classList.add('-translate-x-full');
+                };
+                ui.savedChatsList.appendChild(item);
+            });
+        }
+        
+        function renderChatHistory(history) {
+            ui.chatContainer.innerHTML = '';
+            currentChatHistory = history;
+            history.forEach(msg => {
+                const bubble = document.createElement('div');
+                bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
+                if (msg.sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+                else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                bubble.textContent = msg.text;
+                ui.chatContainer.appendChild(bubble);
+            });
+            ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
+        }
 
-    result = None
-    loop = asyncio.get_running_loop()
+        // --- EVENT HANDLERS ---
+        function uploadPDF() {
+            const file = ui.pdfUploadInput.files[0];
+            if (!file) return;
+            ui.chatContainer.innerHTML = '';
+            currentChatHistory = [];
+            currentPDFName = file.name;
+            ui.pdfTitle.textContent = currentPDFName;
+            ui.pdfViewer.src = URL.createObjectURL(file);
+            setUIState('processing', `Processing '${file.name}'...`);
+            addMessage(`Uploading ${file.name}...`, 'ai');
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const file_content_base64 = e.target.result.split(',')[1];
+                socket.send(JSON.stringify({ type: 'upload', data: file_content_base64, filename: currentPDFName }));
+            };
+            reader.readAsDataURL(file);
+        }
 
-    try:
-        if task['type'] == 'upload':
-            pdf_content = base64.b64decode(task['data'])
-            result = await loop.run_in_executor(None, process_pdf, pdf_content, task['filename'], user_id)
-        elif task['type'] == 'ask':
-            result = await loop.run_in_executor(None, ask_question, task['data'], user_id)
-        elif task['type'] == 'list_chats':
-            result = await loop.run_in_executor(None, list_chats, user_id)
-        elif task['type'] == 'load_chat':
-            result = await loop.run_in_executor(None, load_chat, task['data'], user_id)
-        elif task['type'] == 'remove_watermark_auto':
-            image_content = base64.b64decode(task['image'])
-            processed_image_b64 = await loop.run_in_executor(None, remove_watermark_auto, image_content)
-            result = {"type": "watermark_removed", "data": processed_image_b64, "user_id": user_id}
+        function sendMessage() {
+            const question = ui.messageInput.value.trim();
+            if (!question) return;
+            addMessage(question, 'user');
+            socket.send(JSON.stringify({ type: 'ask', data: question }));
+            ui.messageInput.value = '';
+            setUIState('ai_thinking', 'AI is thinking...');
+        }
+        
+        function saveChat() {
+            const chatName = currentPDFName || 'Chat';
+            const timestamp = new Date().toLocaleString();
+            const key = `chat_${Date.now()}`;
+            localStorage.setItem(key, JSON.stringify({ name: `${chatName} - ${timestamp}`, history: currentChatHistory, pdfName: currentPDFName }));
+            addMessage('Chat saved to your browser\'s local storage.', 'ai');
+            loadSavedChats();
+        }
 
-        if result:
-            await websocket.send(json.dumps(result))
-    except Exception as e:
-        error_result = {"type": "error", "data": f"Failed to handle task: {e}", "user_id": user_id}
-        await websocket.send(json.dumps(error_result))
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = error => reject(error);
+            });
+        }
 
-async def listen_to_server():
-    uri = "wss://chatpdf-server-shtq.onrender.com/ws/worker"
-    while True:
-        try:
-            async with websockets.connect(uri, max_size=None) as websocket:
-                print("Connected to Render server as a worker.")
-                while True:
-                    message = await websocket.recv()
-                    task = json.loads(message)
-                    asyncio.create_task(handle_task(websocket, task))
-        except Exception as e:
-            print(f"Connection error: {e}. Retrying in 5 seconds...")
-            await asyncio.sleep(5)
+        async function removeWatermark() {
+            if (!uploadedImage) {
+                alert("Please upload an image first.");
+                return;
+            }
+            ui.status.textContent = 'Status: Removing watermark...';
+            ui.wmRemoveButton.disabled = true;
+            ui.wmRemoveButton.textContent = 'Processing...';
 
-if __name__ == "__main__":
-    asyncio.run(listen_to_server())
+            const image_base64 = await fileToBase64(uploadedImage);
+
+            socket.send(JSON.stringify({
+                type: 'remove_watermark_auto',
+                image: image_base64
+            }));
+        }
+
+        // --- INITIALIZE ---
+        ui.openSidebarButton.addEventListener('click', () => {
+            socket.send(JSON.stringify({ type: 'list_chats' }));
+            ui.sidebar.classList.remove('-translate-x-full');
+        });
+        ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
+        ui.pdfUploadInput.addEventListener('change', uploadPDF);
+        ui.sendButton.addEventListener('click', sendMessage);
+        ui.saveChatButton.addEventListener('click', saveChat);
+        ui.messageInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') sendMessage();
+        });
+        ui.tabChatPDF.addEventListener('click', () => {
+            ui.viewChatPDF.classList.remove('hidden');
+            ui.viewWatermark.classList.add('hidden');
+            ui.tabChatPDF.classList.add('active');
+            ui.tabWatermark.classList.remove('active');
+        });
+        ui.tabWatermark.addEventListener('click', () => {
+            ui.viewChatPDF.classList.add('hidden');
+            ui.viewWatermark.classList.remove('hidden');
+            ui.tabChatPDF.classList.remove('active');
+            ui.tabWatermark.classList.add('active');
+        });
+        ui.wmImageUpload.addEventListener('change', (e) => {
+            uploadedImage = e.target.files[0];
+            ui.wmOriginalPreview.src = URL.createObjectURL(uploadedImage);
+            ui.wmRemoveButton.disabled = false;
+        });
+        ui.wmRemoveButton.addEventListener('click', removeWatermark);
+        
+        connect();
+    </script>
+</body>
+</html>
