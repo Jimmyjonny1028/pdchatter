@@ -1,5 +1,5 @@
 # File: server.py (for Render)
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import FileResponse
 import uvicorn
 import json
@@ -53,7 +53,6 @@ async def get_homepage():
 async def get_status():
     return {"worker_connected": manager.local_worker is not None}
 
-# --- NEW: Dedicated HTTP endpoint for PDF uploads ---
 @app.post("/upload/{user_id}")
 async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     print(f"Received PDF upload request for user: {user_id}")
@@ -68,20 +67,23 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     print("Forwarded PDF task to worker.")
     return {"message": "File sent to worker for processing."}
 
-# --- NEW: Dedicated HTTP endpoint for Watermark Remover uploads ---
-@app.post("/remove_watermark/{user_id}")
-async def http_remove_watermark(user_id: str, file: UploadFile = File(...)):
-    print(f"Received watermark removal request for user: {user_id}")
+@app.post("/remove_watermark_manual/{user_id}")
+async def http_remove_watermark_manual(user_id: str, image: UploadFile = File(...), mask: UploadFile = File(...)):
+    print(f"Received manual watermark removal request for user: {user_id}")
     if not manager.local_worker:
         raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
-    content = await file.read()
-    content_base64 = base64.b64encode(content).decode('utf-8')
+    
+    image_content = await image.read()
+    mask_content = await mask.read()
+    image_base64 = base64.b64encode(image_content).decode('utf-8')
+    mask_base64 = base64.b64encode(mask_content).decode('utf-8')
+
     await manager.forward_to_worker(json.dumps({
-        "type": "remove_watermark_auto", "user_id": user_id,
-        "image": content_base64
+        "type": "remove_watermark_manual", "user_id": user_id,
+        "image": image_base64, "mask": mask_base64
     }))
-    print("Forwarded watermark task to worker.")
-    return {"message": "Image sent to worker for watermark removal."}
+    print("Forwarded image and mask task to worker.")
+    return {"message": "Image and mask sent to worker for processing."}
 
 
 @app.websocket("/ws/worker")
@@ -99,7 +101,6 @@ async def web_client_websocket(websocket: WebSocket, user_id: str):
     await manager.connect_web_client(websocket, user_id)
     try:
         while True:
-            # WebSocket is now only for questions and chat management
             data_text = await websocket.receive_text()
             data = json.loads(data_text)
             data['user_id'] = user_id
