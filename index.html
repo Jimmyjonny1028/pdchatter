@@ -70,7 +70,7 @@
                             <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
                             <input type="text" id="message-input" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2" placeholder="Please connect to worker..." disabled>
                             <button id="send-button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
-                            </div>
+                        </div>
                     </footer>
                 </section>
             </div>
@@ -92,7 +92,7 @@
                             <input id="image-upload-ai" type="file" class="hidden" accept="image/jpeg,image/png">
                             <input type="text" id="message-input-ai" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2" placeholder="Please connect to worker..." disabled>
                             <button id="send-button-ai" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
-                            </div>
+                        </div>
                     </footer>
                 </section>
             </div>
@@ -100,7 +100,6 @@
     </div>
 
     <script>
-        // MODIFIED: All JavaScript is now inside this event listener
         document.addEventListener('DOMContentLoaded', () => {
             const ui = {
                 status: document.getElementById('status'),
@@ -119,6 +118,7 @@
                 chatContainer: document.getElementById('chat-container'),
                 messageInput: document.getElementById('message-input'),
                 sendButton: document.getElementById('send-button'),
+                saveChatButtonPDF: document.querySelector('#view-chatpdf button[id^="save-chat-button"]'),
                 pdfUploadInput: document.getElementById('pdf-upload'),
                 uploadLabel: document.getElementById('upload-label'),
                 pdfViewer: document.getElementById('pdf-viewer'),
@@ -127,6 +127,7 @@
                 chatContainerAI: document.getElementById('chat-container-ai'),
                 messageInputAI: document.getElementById('message-input-ai'),
                 sendButtonAI: document.getElementById('send-button-ai'),
+                saveChatButtonAI: document.querySelector('#view-ai-chat button[id^="save-chat-button"]'),
                 imageUploadAI: document.getElementById('image-upload-ai'),
                 imagePreviewContainerAI: document.getElementById('image-preview-container-ai'),
                 imagePreviewAI: document.getElementById('image-preview-ai'),
@@ -159,7 +160,7 @@
                 ui.sendButton.disabled = !isChatReady;
                 ui.messageInputAI.disabled = !isWorkerReady;
                 ui.sendButtonAI.disabled = !isWorkerReady;
-                
+
                 if (isChatReady) {
                     ui.messageInput.placeholder = "Ask a question about the PDF...";
                     ui.sendButton.classList.remove('bg-gray-500'); ui.sendButton.classList.add('bg-green-500');
@@ -244,19 +245,6 @@
             }
 
             function handleServerMessage(message) {
-                let targetBubble, targetContainer, stateToSet, statusMsg;
-                if (message.target === 'ai_chat') {
-                    targetBubble = aiChatStreamingBubble;
-                    targetContainer = ui.chatContainerAI;
-                    stateToSet = 'worker_ready';
-                    statusMsg = 'AI worker connected.';
-                } else {
-                    targetBubble = pdfStreamingBubble;
-                    targetContainer = ui.chatContainer;
-                    stateToSet = 'ready_to_chat';
-                    statusMsg = `Ready: ${currentPDFName}`;
-                }
-
                 switch (message.type) {
                     case 'status':
                         addMessage(message.data, 'ai', 'pdf_chat');
@@ -274,7 +262,7 @@
                         }
                         break;
                     case 'answer_end':
-                        // The render loop will now handle stopping, saving, and UI updates
+                        // Let the render loop finish and handle cleanup
                         break;
                     case 'error':
                         const target = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
@@ -298,11 +286,9 @@
                         const finalHTML = marked.parse(currentStreamingBubble.textContent);
                         currentStreamingBubble.innerHTML = finalHTML;
                         addCopyButtonsTo(currentStreamingBubble);
-                        if (history.length > 0) {
-                            const lastMessage = history[history.length - 1];
-                            if (lastMessage.sender === 'ai') {
-                                lastMessage.text = currentStreamingBubble.textContent;
-                            }
+                        const lastMessage = history[history.length - 1];
+                        if (lastMessage && lastMessage.sender === 'ai') {
+                            lastMessage.text = currentStreamingBubble.textContent;
                         }
                         autosaveChat();
                     }
@@ -440,12 +426,9 @@
 
             function startNewChat() {
                 if (activeTab === 'pdf_chat') {
-                    pdfChatHistory = [];
-                    currentPDFName = null;
+                    pdfChatHistory = []; currentPDFName = null;
                     sessionStorage.removeItem('currentPdfChatId');
-                    ui.chatContainer.innerHTML = '';
-                    ui.pdfTitle.textContent = 'PDF Preview';
-                    ui.pdfViewer.src = '';
+                    ui.chatContainer.innerHTML = ''; ui.pdfTitle.textContent = 'PDF Preview'; ui.pdfViewer.src = '';
                 } else {
                     aiChatHistory = [];
                     sessionStorage.removeItem('currentAIChatId');
