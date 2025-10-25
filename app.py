@@ -1,4 +1,6 @@
 # File: server.py (This is the code that should be on Render)
+# Final version with robust forwarding and detailed logging.
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 import uvicorn
@@ -43,14 +45,33 @@ class ConnectionManager:
         else:
             log_message("!!! ERROR: Worker is not connected. Cannot forward message. !!!")
 
+    # --- MODIFIED FUNCTION WITH DETAILED LOGGING ---
     async def forward_to_web_client(self, message: str):
+        """Forwards a message from the worker to the correct web client with detailed logging."""
         try:
             data = json.loads(message)
+            msg_type = data.get("type", "unknown")
             user_id = data.get("user_id")
-            if user_id and user_id in self.web_clients:
+
+            # Silently ignore the worker's internal pings
+            if msg_type == "ping":
+                return
+
+            log_message(f"Received message of type '{msg_type}' from worker, intended for user '{user_id}'.")
+
+            if not user_id:
+                log_message(f"!!! WARNING: Message from worker has no user_id. Cannot forward. Content: {message[:200]}")
+                return
+
+            if user_id in self.web_clients:
+                log_message(f"--> Forwarding '{msg_type}' to user '{user_id}'.")
                 await self.web_clients[user_id].send_text(message)
+            else:
+                log_message(f"!!! ERROR: User '{user_id}' not found in connected web clients. Cannot forward message.")
+                log_message(f"Currently connected web clients: {list(self.web_clients.keys())}")
+
         except Exception as e:
-            log_message(f"Error forwarding to web client: {e}")
+            log_message(f"!!! CRITICAL ERROR in forward_to_web_client: {e}")
 
 manager = ConnectionManager()
 
