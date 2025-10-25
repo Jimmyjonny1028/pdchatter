@@ -1,10 +1,7 @@
-# File: server.py (This is the code that should be on Render)
+# File: server.py (Final Version with Object Remover endpoint)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
-import uvicorn
-import json
-import base64
-import datetime
+import uvicorn, json, base64, datetime
 
 app = FastAPI()
 
@@ -13,40 +10,33 @@ def log_message(msg):
     print(f"[{timestamp}] {msg}")
 
 class ConnectionManager:
+    # This class does not need any changes from the previous version
     def __init__(self):
         self.web_clients: dict[str, WebSocket] = {}
         self.local_worker: WebSocket | None = None
-
     async def connect_web_client(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.web_clients[user_id] = websocket
         log_message(f"Web client '{user_id}' connected.")
-
     async def connect_local_worker(self, websocket: WebSocket):
         await websocket.accept()
         self.local_worker = websocket
         log_message(">>> Local AI Worker connected! <<<")
-
     def disconnect_web_client(self, user_id: str):
-        if user_id in self.web_clients:
-            del self.web_clients[user_id]
+        if user_id in self.web_clients: del self.web_clients[user_id]
         log_message(f"Web client '{user_id}' disconnected.")
-
     async def disconnect_local_worker(self):
         self.local_worker = None
         log_message(">>> Local AI Worker disconnected. <<<")
-
     async def forward_to_worker(self, message: str):
         if self.local_worker and self.local_worker.client_state.name == 'CONNECTED':
             await self.local_worker.send_text(message)
         else:
-            log_message("!!! ERROR: Worker is not connected. Cannot forward message. !!!")
-
+            log_message("!!! ERROR: Worker not connected. Cannot forward message. !!!")
     async def forward_to_web_client(self, message: str):
         try:
             data = json.loads(message)
-            msg_type = data.get("type", "unknown")
-            user_id = data.get("user_id")
+            msg_type, user_id = data.get("type", "unknown"), data.get("user_id")
             if msg_type == "ping": return
             if user_id and user_id in self.web_clients:
                 await self.web_clients[user_id].send_text(message)
@@ -56,8 +46,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 @app.get("/")
-async def get_homepage():
-    return FileResponse('index.html')
+async def get_homepage(): return FileResponse('index.html')
 
 @app.get("/status")
 async def get_status():
@@ -65,10 +54,8 @@ async def get_status():
 
 @app.post("/upload/{user_id}")
 async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
-    if not manager.local_worker:
-        raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
-    content = await file.read()
-    content_base64 = base64.b64encode(content).decode('utf-8')
+    if not manager.local_worker: raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
+    content_base64 = base64.b64encode(await file.read()).decode('utf-8')
     CHUNK_SIZE = 512 * 1024
     await manager.forward_to_worker(json.dumps({ "type": "upload_start", "user_id": user_id, "filename": file.filename }))
     for i in range(0, len(content_base64), CHUNK_SIZE):
@@ -76,13 +63,29 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     await manager.forward_to_worker(json.dumps({ "type": "upload_end", "user_id": user_id }))
     return {"message": "File sent to worker for processing."}
 
+# NEW: Endpoint for Object Remover
+@app.post("/remove_object/{user_id}")
+async def http_remove_object(user_id: str, image: UploadFile = File(...), mask: UploadFile = File(...)):
+    log_message(f"Received object removal request for user: {user_id}")
+    if not manager.local_worker:
+        raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
+    
+    image_b64 = base64.b64encode(await image.read()).decode('utf-8')
+    mask_b64 = base64.b64encode(await mask.read()).decode('utf-8')
+
+    await manager.forward_to_worker(json.dumps({
+        "type": "remove_object", "user_id": user_id,
+        "image": image_b64, "mask": mask_b64
+    }))
+    log_message("Forwarded object removal task to worker.")
+    return {"message": "Image and mask sent to worker for processing."}
+
 @app.websocket("/ws/worker")
 async def worker_websocket(websocket: WebSocket):
     await manager.connect_local_worker(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            await manager.forward_to_web_client(data)
+            await manager.forward_to_web_client(await websocket.receive_text())
     except WebSocketDisconnect:
         await manager.disconnect_local_worker()
 
@@ -91,10 +94,8 @@ async def web_client_websocket(websocket: WebSocket, user_id: str):
     await manager.connect_web_client(websocket, user_id)
     try:
         while True:
-            data_text = await websocket.receive_text()
-            data = json.loads(data_text)
-            if data.get("type") == "ping":
-                continue
+            data = json.loads(await websocket.receive_text())
+            if data.get("type") == "ping": continue
             data['user_id'] = user_id
             await manager.forward_to_worker(json.dumps(data))
     except WebSocketDisconnect:
