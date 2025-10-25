@@ -1,6 +1,4 @@
-# File: server.py (This is the code that should be on Render)
-# Final version with robust forwarding and detailed logging.
-
+# File: server.py (Final version, ignores pings from web clients)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 import uvicorn
@@ -11,7 +9,6 @@ import datetime
 app = FastAPI()
 
 def log_message(msg):
-    """Helper for timestamped logs."""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {msg}")
 
@@ -45,31 +42,14 @@ class ConnectionManager:
         else:
             log_message("!!! ERROR: Worker is not connected. Cannot forward message. !!!")
 
-    # --- MODIFIED FUNCTION WITH DETAILED LOGGING ---
     async def forward_to_web_client(self, message: str):
-        """Forwards a message from the worker to the correct web client with detailed logging."""
         try:
             data = json.loads(message)
             msg_type = data.get("type", "unknown")
             user_id = data.get("user_id")
-
-            # Silently ignore the worker's internal pings
-            if msg_type == "ping":
-                return
-
-            log_message(f"Received message of type '{msg_type}' from worker, intended for user '{user_id}'.")
-
-            if not user_id:
-                log_message(f"!!! WARNING: Message from worker has no user_id. Cannot forward. Content: {message[:200]}")
-                return
-
-            if user_id in self.web_clients:
-                log_message(f"--> Forwarding '{msg_type}' to user '{user_id}'.")
+            if msg_type == "ping": return
+            if user_id and user_id in self.web_clients:
                 await self.web_clients[user_id].send_text(message)
-            else:
-                log_message(f"!!! ERROR: User '{user_id}' not found in connected web clients. Cannot forward message.")
-                log_message(f"Currently connected web clients: {list(self.web_clients.keys())}")
-
         except Exception as e:
             log_message(f"!!! CRITICAL ERROR in forward_to_web_client: {e}")
 
@@ -81,26 +61,19 @@ async def get_homepage():
 
 @app.get("/status")
 async def get_status():
-    is_connected = manager.local_worker is not None and manager.local_worker.client_state.name == 'CONNECTED'
-    return {"worker_connected": is_connected}
+    return {"worker_connected": manager.local_worker is not None and manager.local_worker.client_state.name == 'CONNECTED'}
 
 @app.post("/upload/{user_id}")
 async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
-    log_message(f"Received PDF upload for user: {user_id}")
     if not manager.local_worker:
         raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
-    
     content = await file.read()
     content_base64 = base64.b64encode(content).decode('utf-8')
-    
     CHUNK_SIZE = 512 * 1024
-    
     await manager.forward_to_worker(json.dumps({ "type": "upload_start", "user_id": user_id, "filename": file.filename }))
     for i in range(0, len(content_base64), CHUNK_SIZE):
         await manager.forward_to_worker(json.dumps({ "type": "upload_chunk", "user_id": user_id, "data": content_base64[i:i + CHUNK_SIZE] }))
     await manager.forward_to_worker(json.dumps({ "type": "upload_end", "user_id": user_id }))
-
-    log_message(f"Finished streaming PDF chunks to worker for user: {user_id}")
     return {"message": "File sent to worker for processing."}
 
 @app.websocket("/ws/worker")
@@ -120,10 +93,10 @@ async def web_client_websocket(websocket: WebSocket, user_id: str):
         while True:
             data_text = await websocket.receive_text()
             data = json.loads(data_text)
+            # NEW: Ignore ping messages from the browser
+            if data.get("type") == "ping":
+                continue
             data['user_id'] = user_id
             await manager.forward_to_worker(json.dumps(data))
     except WebSocketDisconnect:
         manager.disconnect_web_client(user_id)
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
