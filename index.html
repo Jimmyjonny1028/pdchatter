@@ -13,9 +13,8 @@
         #chat-sidebar { transition: transform 0.3s ease-in-out; }
         .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
         
-        /* Custom scrollbar for the dark mode chat container */
         #chat-container::-webkit-scrollbar { width: 8px; }
-        #chat-container::-webkit-scrollbar-track { background: #1e293b; } /* Darker track */
+        #chat-container::-webkit-scrollbar-track { background: #1e293b; }
         #chat-container::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         #chat-container::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
@@ -23,16 +22,9 @@
 <body class="bg-gray-100 h-screen overflow-hidden">
 
     <div class="flex h-full">
-        <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20">
-            <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
-                <h2 class="text-xl font-bold">Saved Chats</h2>
-                <button id="close-sidebar-button" class="text-slate-400 hover:text-white text-2xl">&times;</button>
-            </div>
-            <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2"></div>
-        </aside>
-
+        <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20"></aside>
         <div class="flex-1 flex flex-col h-full">
-             <header class="bg-white shadow-md p-4 flex items-center justify-between">
+            <header class="bg-white shadow-md p-4 flex items-center justify-between">
                 <div class="flex items-center space-x-4">
                     <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -42,9 +34,9 @@
                         <p id="status" class="text-sm text-gray-500">Status: Connecting to server...</p>
                     </div>
                 </div>
-                <div class="border-b-2 border-transparent">
-                    <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none active">ChatPDF</button>
-                    <button id="tab-watermark" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none">Watermark Remover</button>
+                <div>
+                    <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">ChatPDF</button>
+                    <button id="tab-watermark" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">Watermark Remover</button>
                 </div>
             </header>
 
@@ -62,15 +54,13 @@
                                 <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">📁 Upload</label>
                                 <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
                             </div>
-                            <input type="text" id="message-input" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400" placeholder="Please connect to worker..." disabled>
-                            <button id="send-button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg cursor-not-allowed" disabled>Send</button>
-                            <button id="save-chat-button" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg opacity-50 cursor-not-allowed" disabled>Save</button>
+                            <input type="text" id="message-input" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2" placeholder="Please connect to worker..." disabled>
+                            <button id="send-button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
                         </div>
                     </footer>
                 </section>
             </div>
-            
-            </div>
+        </div>
     </div>
 
     <script>
@@ -83,19 +73,8 @@
             status: document.getElementById('status'),
             pdfViewer: document.getElementById('pdf-viewer'),
             pdfTitle: document.getElementById('pdf-title'),
-            sidebar: document.getElementById('chat-sidebar'),
-            openSidebarButton: document.getElementById('open-sidebar-button'),
-            closeSidebarButton: document.getElementById('close-sidebar-button'),
-            saveChatButton: document.getElementById('save-chat-button'),
-            savedChatsList: document.getElementById('saved-chats-list'),
-            tabChatPDF: document.getElementById('tab-chatpdf'),
-            tabWatermark: document.getElementById('tab-watermark'),
-            viewChatPDF: document.getElementById('view-chatpdf'),
-            viewWatermark: document.getElementById('view-watermark'),
         };
         
-        let currentPDFName = "";
-        let currentChatHistory = [];
         let userId = localStorage.getItem('chatpdf_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
         localStorage.setItem('chatpdf_user_id', userId);
         
@@ -103,7 +82,6 @@
         let socket;
         let statusInterval;
         let pingInterval;
-        
         let characterQueue = [];
         let isRendering = false;
 
@@ -118,19 +96,14 @@
 
             ui.messageInput.disabled = !isChatReady;
             ui.sendButton.disabled = !isChatReady;
-            
-            const canSave = isChatReady && currentChatHistory.length > 0;
-            ui.saveChatButton.disabled = !canSave;
-            ui.saveChatButton.classList.toggle('opacity-50', !canSave);
-            ui.saveChatButton.classList.toggle('cursor-not-allowed', !canSave);
 
             if (isChatReady) {
                 ui.messageInput.placeholder = "Ask a question about the PDF...";
-                ui.sendButton.classList.remove('bg-gray-500', 'cursor-not-allowed');
+                ui.sendButton.classList.remove('bg-gray-500');
                 ui.sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
             } else {
                 ui.messageInput.placeholder = message;
-                ui.sendButton.classList.add('bg-gray-500', 'cursor-not-allowed');
+                ui.sendButton.classList.add('bg-gray-500');
                 ui.sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
             }
         }
@@ -167,7 +140,14 @@
             };
 
             socket.onmessage = (event) => {
-                handleServerMessage(JSON.parse(event.data));
+                // NEW: Added a try...catch block for robustness
+                try {
+                    console.log("Received data:", event.data);
+                    const message = JSON.parse(event.data);
+                    handleServerMessage(message);
+                } catch (error) {
+                    console.error("Failed to parse or handle message:", error);
+                }
             };
 
             socket.onclose = () => {
@@ -179,7 +159,10 @@
                 }
             };
             
-            socket.onerror = (error) => socket.close();
+            socket.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+                socket.close();
+            };
         }
         
         function handleServerMessage(message) {
@@ -191,8 +174,8 @@
                     }
                     break;
                 case 'answer_chunk':
-                    for (const char of message.data) {
-                        characterQueue.push(char);
+                    if (message.data) {
+                        characterQueue.push(...message.data.split(''));
                     }
                     if (!currentStreamingBubble) {
                         currentStreamingBubble = addMessage('', 'ai');
@@ -231,8 +214,6 @@
         }
 
         function addMessage(text, sender) {
-            currentChatHistory.push({ sender, text });
-
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
             if (sender === 'user') {
@@ -243,8 +224,6 @@
             bubble.textContent = text;
             ui.chatContainer.appendChild(bubble);
             ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
-            
-            setUIState(ui.status.textContent.replace('Status: ', ''));
             return bubble;
         }
 
@@ -253,7 +232,6 @@
             if (!file) return;
 
             ui.chatContainer.innerHTML = '';
-            currentChatHistory = [];
             currentPDFName = file.name;
             ui.pdfTitle.textContent = currentPDFName;
             ui.pdfViewer.src = URL.createObjectURL(file);
@@ -283,15 +261,10 @@
             setUIState('ai_thinking', 'AI is thinking...');
         }
         
-        // --- INITIALIZE ---
         ui.pdfUploadInput.addEventListener('change', uploadPDF);
         ui.sendButton.addEventListener('click', sendMessage);
         ui.messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !ui.messageInput.disabled) sendMessage();
-        });
-        
-        ui.saveChatButton.addEventListener('click', () => {
-            alert('Save chat functionality is not yet implemented.');
         });
         
         statusInterval = setInterval(checkWorkerStatus, 3000);
