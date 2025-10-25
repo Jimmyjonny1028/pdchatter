@@ -161,7 +161,7 @@
                 ui.messageInputAI.disabled = !isWorkerReady;
                 ui.sendButtonAI.disabled = !isWorkerReady;
 
-                const canSavePDF = isChatReady && pdfChatHistory.length > 0;
+                const canSavePDF = isChatReady && pdfChatHistory.length > 1;
                 ui.saveChatButtonPDF.disabled = !canSavePDF;
                 ui.saveChatButtonPDF.classList.toggle('opacity-50', !canSavePDF);
                 ui.saveChatButtonPDF.classList.toggle('cursor-not-allowed', !canSavePDF);
@@ -180,7 +180,7 @@
                 }
 
                 if (isWorkerReady) {
-                    ui.messageInputAI.placeholder = "Send a message, or attach an image...";
+                    ui.messageInputAI.placeholder = "Send a message, or paste an image...";
                     ui.sendButtonAI.classList.remove('bg-gray-500'); ui.sendButtonAI.classList.add('bg-green-500');
                 } else {
                     ui.messageInputAI.placeholder = message;
@@ -255,7 +255,6 @@
 
             function handleServerMessage(message) {
                 let targetBubble, targetContainer, stateToSet, statusMsg;
-
                 if (message.target === 'ai_chat') {
                     targetBubble = aiChatStreamingBubble;
                     targetContainer = ui.chatContainerAI;
@@ -307,7 +306,6 @@
             function addMessage(text, sender, target = 'pdf_chat', imageB64 = null) {
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
-                history.push({ sender, text, imageB64 });
                 
                 const bubble = document.createElement('div');
                 bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
@@ -327,6 +325,11 @@
                 container.appendChild(bubble);
                 container.scrollTop = container.scrollHeight;
                 
+                // Don't save system messages to history
+                if (sender !== 'system') {
+                    history.push({ sender, text, imageB64 });
+                }
+
                 setUIState(ui.status.textContent.replace('Status: ', ''));
                 return bubble;
             }
@@ -402,7 +405,6 @@
             function loadChat(chatId) {
                 const chatData = JSON.parse(localStorage.getItem(chatId));
                 if (!chatData) return;
-
                 if (chatData.type === 'pdf_chat') {
                     pdfChatHistory = chatData.history;
                     currentPDFName = chatData.pdfName;
@@ -474,22 +476,9 @@
                 uploadedImageB64 = null;
                 setUIState('ai_thinking', 'AI is thinking...');
             }
-            
-            ui.tabChatPDF.addEventListener('click', () => { activeTab = 'pdf_chat'; ui.viewChatPDF.style.display = 'grid'; ui.viewAIChat.style.display = 'none'; ui.tabChatPDF.classList.add('active'); ui.tabAIChat.classList.remove('active'); });
-            ui.tabAIChat.addEventListener('click', () => { activeTab = 'ai_chat'; ui.viewChatPDF.style.display = 'none'; ui.viewAIChat.style.display = 'flex'; ui.tabChatPDF.classList.remove('active'); ui.tabAIChat.classList.add('active'); });
-            ui.openSidebarButton.addEventListener('click', () => { loadSavedChats(); ui.sidebar.classList.remove('-translate-x-full'); });
-            ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
-            ui.newChatButton.addEventListener('click', () => { startNewChat(); ui.sidebar.classList.add('-translate-x-full'); });
-            ui.pdfUploadInput.addEventListener('change', uploadPDF);
-            ui.sendButton.addEventListener('click', sendMessage);
-            ui.messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
-            ui.saveChatButtonPDF.addEventListener('click', saveChat);
-            ui.sendButtonAI.addEventListener('click', sendMessageAIChat);
-            ui.messageInputAI.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessageAIChat(); } });
-            ui.saveChatButtonAI.addEventListener('click', saveChat);
-            ui.imageUploadAI.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+
+            function handleImageFile(file) {
+                if (!file || !file.type.startsWith('image/')) return;
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     uploadedImageB64 = event.target.result.split(',')[1];
@@ -497,11 +486,39 @@
                     ui.imagePreviewContainerAI.style.display = 'block';
                 };
                 reader.readAsDataURL(file);
-            });
+            }
+            
+            ui.tabChatPDF.addEventListener('click', () => { activeTab = 'pdf_chat'; ui.viewChatPDF.style.display = 'grid'; ui.viewAIChat.style.display = 'none'; ui.tabChatPDF.classList.add('active'); ui.tabAIChat.classList.remove('active'); });
+            ui.tabAIChat.addEventListener('click', () => { activeTab = 'ai_chat'; ui.viewChatPDF.style.display = 'none'; ui.viewAIChat.style.display = 'flex'; ui.tabChatPDF.classList.remove('active'); ui.tabAIChat.classList.add('active'); });
+            ui.openSidebarButton.addEventListener('click', () => { loadSavedChats(); ui.sidebar.classList.remove('-translate-x-full'); });
+            ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
+            ui.newChatButton.addEventListener('click', () => { startNewChat(); ui.sidebar.classList.add('-translate-x-full'); });
+            
+            ui.pdfUploadInput.addEventListener('change', uploadPDF);
+            ui.sendButton.addEventListener('click', sendMessage);
+            ui.messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+            ui.saveChatButtonPDF.addEventListener('click', saveChat);
+            
+            ui.sendButtonAI.addEventListener('click', sendMessageAIChat);
+            ui.messageInputAI.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessageAIChat(); } });
+            ui.saveChatButtonAI.addEventListener('click', saveChat);
+
+            ui.imageUploadAI.addEventListener('change', (e) => handleImageFile(e.target.files[0]));
             ui.removeImageButtonAI.addEventListener('click', () => {
                 uploadedImageB64 = null;
                 ui.imagePreviewContainerAI.style.display = 'none';
                 ui.imageUploadAI.value = '';
+            });
+            ui.messageInputAI.addEventListener('paste', (e) => {
+                const items = (e.clipboardData || window.clipboardData).items;
+                for (const item of items) {
+                    if (item.kind === 'file' && item.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        handleImageFile(file);
+                        return;
+                    }
+                }
             });
 
             statusInterval = setInterval(checkWorkerStatus, 3000);
