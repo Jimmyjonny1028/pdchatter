@@ -140,9 +140,7 @@
             };
 
             socket.onmessage = (event) => {
-                // NEW: Added a try...catch block for robustness
                 try {
-                    console.log("Received data:", event.data);
                     const message = JSON.parse(event.data);
                     handleServerMessage(message);
                 } catch (error) {
@@ -150,18 +148,18 @@
                 }
             };
 
-            socket.onclose = () => {
-                console.log("WebSocket disconnected. Re-checking status...");
+            socket.onclose = (event) => {
+                console.log("WebSocket disconnected. Code:", event.code, "Reason:", event.reason);
                 clearInterval(pingInterval);
                 setUIState('disconnected', 'Disconnected. Trying to reconnect...');
-                if (!statusInterval) {
-                    statusInterval = setInterval(checkWorkerStatus, 3000);
-                }
+                // Clear any old interval and start a new one to ensure reconnection happens
+                if(statusInterval) clearInterval(statusInterval);
+                statusInterval = setInterval(checkWorkerStatus, 3000);
             };
             
             socket.onerror = (error) => {
                 console.error("WebSocket Error:", error);
-                socket.close();
+                // The onclose event will fire after an error, so we let it handle the reconnection.
             };
         }
         
@@ -267,6 +265,7 @@
             if (event.key === 'Enter' && !ui.messageInput.disabled) sendMessage();
         });
         
+        // Initial setup
         statusInterval = setInterval(checkWorkerStatus, 3000);
         checkWorkerStatus();
     </script>
