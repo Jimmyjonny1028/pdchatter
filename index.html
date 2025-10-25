@@ -23,6 +23,9 @@
         .user-bubble img { max-width: 150px; border-radius: 0.5rem; margin-top: 0.5rem; }
         .copy-button { position: absolute; top: 0.5rem; right: 0.5rem; background-color: #475569; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem; opacity: 0; transition: opacity 0.2s; }
         pre:hover .copy-button { opacity: 1; }
+        .ai-bubble table { width: 100%; margin-top: 1em; margin-bottom: 1em; border-collapse: collapse; border: 1px solid #475569; }
+        .ai-bubble th, .ai-bubble td { border: 1px solid #475569; padding: 0.5rem 0.75rem; text-align: left; }
+        .ai-bubble th { background-color: #1e293b; font-weight: bold; }
     </style>
 </head>
 <body class="bg-gray-100 h-screen overflow-hidden">
@@ -458,8 +461,9 @@
             function sendMessage() {
                 const question = ui.messageInput.value.trim();
                 if (!question) return;
+                const historyForAI = pdfChatHistory.slice(0, -1);
                 addMessage(question, 'user', 'pdf_chat');
-                socket.send(JSON.stringify({ type: 'ask', data: { question: question, history: pdfChatHistory.slice(0, -1) } }));
+                socket.send(JSON.stringify({ type: 'ask', data: { question: question, history: historyForAI } }));
                 ui.messageInput.value = '';
                 setUIState('ai_thinking', 'AI is thinking...');
             }
@@ -467,8 +471,9 @@
             function sendMessageAIChat() {
                 const question = ui.messageInputAI.value.trim();
                 if ((!question && !uploadedImageB64) || !socket || socket.readyState !== WebSocket.OPEN) return;
+                const historyForAI = aiChatHistory; // We will send the full history
                 addMessage(question, 'user', 'ai_chat', uploadedImageB64);
-                const payload = { question: question, history: aiChatHistory.slice(0, -1), image_b64: uploadedImageB64 };
+                const payload = { question: question, history: historyForAI, image_b64: uploadedImageB64 };
                 const taskType = uploadedImageB64 ? 'general_chat_with_image' : 'general_chat';
                 socket.send(JSON.stringify({ type: taskType, data: payload }));
                 ui.messageInputAI.value = '';
