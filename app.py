@@ -1,158 +1,108 @@
-# File: worker.py (with enhanced logging)
-
-import asyncio
-import websockets
+# File: server.py (This is the code that should be on Render)
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
+import uvicorn
 import json
 import base64
-import fitz
-import numpy as np
-from PIL import Image
-import pytesseract
-import re
-from openai import OpenAI
-from sklearn.metrics.pairwise import cosine_similarity
-from typing import Dict
 import datetime
 
-# --- CONFIGURATION ---
-RENDER_SERVER_URL = "wss://chatpdf-server-shtq.onrender.com/ws/worker"
-
-try:
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-except Exception:
-    pass # Will print a more specific message if OCR is attempted
-
-# --- OLLAMA CLIENT INITIALIZATION ---
-client = OpenAI(base_url='http://localhost:11434/v1', api_key='ollama')
-embedding_model_name = 'nomic-embed-text'
-llm_model_name = 'gpt-oss:20b'
-
-# --- STATE MANAGEMENT ---
-user_document_states: Dict[str, dict] = {}
+app = FastAPI()
 
 def log_message(msg):
     """Helper for timestamped logs."""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {msg}")
 
-# --- CORE AI LOGIC (Unchanged) ---
-# ... (All the functions like get_embeddings, process_pdf_task, ask_question_task are the same)
-def get_embeddings(texts: list[str], model: str) -> list[list[float]]:
-    res = client.embeddings.create(input=texts, model=model)
-    return [embedding.embedding for embedding in res.data]
+class ConnectionManager:
+    def __init__(self):
+        self.web_clients: dict[str, WebSocket] = {}
+        self.local_worker: WebSocket | None = None
 
-async def send_message(websocket, message_dict: dict):
-    message_str = json.dumps(message_dict)
-    await websocket.send(message_str)
+    async def connect_web_client(self, websocket: WebSocket, user_id: str):
+        await websocket.accept()
+        self.web_clients[user_id] = websocket
+        log_message(f"Web client '{user_id}' connected.")
 
-async def process_pdf_task(pdf_b64: str, user_id: str, filename: str, websocket):
-    try:
-        await send_message(websocket, {"type": "status", "user_id": user_id, "data": f"Processing '{filename}'..."})
-        pdf_content = base64.b64decode(pdf_b64)
-        doc = fitz.open(stream=pdf_content, filetype="pdf")
-        full_text = "".join(page.get_text("text") for page in doc)
+    async def connect_local_worker(self, websocket: WebSocket):
+        await websocket.accept()
+        self.local_worker = websocket
+        log_message(">>> Local AI Worker connected! <<<")
 
-        if len(full_text.strip()) < 100:
-            log_message("Minimal text found, attempting OCR...")
-            full_text = ""
-            try:
-                for i, page in enumerate(doc):
-                    await send_message(websocket, {"type": "status", "user_id": user_id, "data": f"Performing OCR on page {i+1}/{len(doc)}..."})
-                    pix = page.get_pixmap(dpi=300)
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    full_text += pytesseract.image_to_string(img) + "\n"
-            except Exception as ocr_error:
-                log_message(f"OCR FAILED: {ocr_error}")
-                raise ValueError(f"OCR process failed. Is Tesseract installed and in your PATH? Error: {ocr_error}")
+    def disconnect_web_client(self, user_id: str):
+        if user_id in self.web_clients:
+            del self.web_clients[user_id]
+        log_message(f"Web client '{user_id}' disconnected.")
 
-        doc.close()
-        paragraphs = re.split(r'\n\s*\n', full_text)
-        chunks = [re.sub(r'\s+', ' ', p).strip() for p in paragraphs if len(p.strip()) > 20]
-        if not chunks: raise ValueError("Could not extract any meaningful text from the PDF.")
+    async def disconnect_local_worker(self):
+        self.local_worker = None
+        log_message(">>> Local AI Worker disconnected. <<<")
 
-        await send_message(websocket, {"type": "status", "user_id": user_id, "data": f"Creating embeddings for {len(chunks)} text chunks..."})
-        all_embeddings = []
-        for i in range(0, len(chunks), 50):
-            all_embeddings.extend(get_embeddings(chunks[i:i+50], model=embedding_model_name))
+    async def forward_to_worker(self, message: str):
+        if self.local_worker and self.local_worker.client_state.name == 'CONNECTED':
+            await self.local_worker.send_text(message)
+        else:
+            log_message("!!! ERROR: Worker is not connected. Cannot forward message. !!!")
 
-        user_document_states[user_id]["text_chunks"] = chunks
-        user_document_states[user_id]["chunk_embeddings"] = np.array(all_embeddings)
-        log_message(f"Successfully processed PDF '{filename}' for user {user_id}")
-        await send_message(websocket, {"type": "status", "user_id": user_id, "data": f"Ready for questions about '{filename}'."})
-    except Exception as e:
-        log_message(f"ERROR processing PDF for user {user_id}: {e}")
-        await send_message(websocket, {"type": "error", "user_id": user_id, "data": f"Failed to process PDF: {e}"})
-
-async def ask_question_task(question: str, user_id: str, websocket):
-    try:
-        if user_id not in user_document_states or "chunk_embeddings" not in user_document_states[user_id]:
-            raise ValueError("No document has been processed for this session yet.")
-        state = user_document_states[user_id]
-        question_embedding = np.array(get_embeddings([question], model=embedding_model_name)[0]).reshape(1, -1)
-        similarities = cosine_similarity(question_embedding, state["chunk_embeddings"])[0]
-        top_indices = np.argsort(similarities)[-5:][::-1]
-        context = "\n\n---\n\n".join([state["text_chunks"][i] for i in top_indices])
-        system_prompt = "You are an expert assistant..." # (rest of prompt is the same)
-        user_prompt = f"CONTEXT:\n{context}\n\nQUESTION:\n{question}\n\nANSWER:"
-        stream = client.chat.completions.create(model=llm_model_name, messages=[...], stream=True)
-        log_message(f"Streaming answer for user {user_id}...")
-        for chunk in stream:
-            token = chunk.choices[0].delta.content or ""
-            if token:
-                await send_message(websocket, {"type": "answer_chunk", "user_id": user_id, "data": token})
-        await send_message(websocket, {"type": "answer_end", "user_id": user_id})
-        log_message(f"Finished streaming answer for user {user_id}.")
-    except Exception as e:
-        log_message(f"ERROR answering question for user {user_id}: {e}")
-        await send_message(websocket, {"type": "error", "user_id": user_id, "data": f"An error occurred: {e}"})
-
-# --- MAIN WEBSOCKET CONNECTION LOOP (MODIFIED WITH ENHANCED LOGGING) ---
-async def main():
-    while True:
-        log_message(f"Attempting to connect to Render server at {RENDER_SERVER_URL}...")
+    async def forward_to_web_client(self, message: str):
         try:
-            async with websockets.connect(
-                RENDER_SERVER_URL,
-                max_size=2**24,
-                write_limit=2**24,
-                ping_interval=20,
-                ping_timeout=20
-            ) as websocket:
-                log_message(">>> Connection SUCCESSFUL. Waiting for tasks. <<<")
-                while True:
-                    message_str = await websocket.recv()
-                    message = json.loads(message_str)
-                    
-                    user_id = message.get("user_id")
-                    task_type = message.get("type")
-
-                    log_message(f"Received task of type '{task_type}' for user '{user_id}'.")
-
-                    if task_type == "upload_start":
-                        if user_id not in user_document_states: user_document_states[user_id] = {}
-                        user_document_states[user_id]['file_chunks'] = []
-                        user_document_states[user_id]['filename'] = message.get("filename")
-                    elif task_type == "upload_chunk":
-                        if user_id in user_document_states:
-                            user_document_states[user_id]['file_chunks'].append(message["data"])
-                    elif task_type == "upload_end":
-                        if user_id in user_document_states and 'file_chunks' in user_document_states[user_id]:
-                            full_b64_data = "".join(user_document_states[user_id]['file_chunks'])
-                            filename = user_document_states[user_id]['filename']
-                            asyncio.create_task(process_pdf_task(full_b64_data, user_id, filename, websocket))
-                            del user_document_states[user_id]['file_chunks']
-                    elif task_type == "ask":
-                        asyncio.create_task(ask_question_task(message["data"], user_id, websocket))
-
-        except websockets.exceptions.ConnectionClosed as e:
-            log_message(f"!!! Connection CLOSED: {e}. Retrying in 5 seconds... !!!")
-            await asyncio.sleep(5)
-        except ConnectionRefusedError:
-            log_message("!!! Connection REFUSED. Is the Render server running? Retrying in 5 seconds... !!!")
-            await asyncio.sleep(5)
+            data = json.loads(message)
+            user_id = data.get("user_id")
+            if user_id and user_id in self.web_clients:
+                await self.web_clients[user_id].send_text(message)
         except Exception as e:
-            log_message(f"!!! An unexpected error occurred: {e}. Retrying in 5 seconds... !!!")
-            await asyncio.sleep(5)
+            log_message(f"Error forwarding to web client: {e}")
+
+manager = ConnectionManager()
+
+@app.get("/")
+async def get_homepage():
+    return FileResponse('index.html')
+
+@app.get("/status")
+async def get_status():
+    is_connected = manager.local_worker is not None and manager.local_worker.client_state.name == 'CONNECTED'
+    return {"worker_connected": is_connected}
+
+@app.post("/upload/{user_id}")
+async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
+    log_message(f"Received PDF upload for user: {user_id}")
+    if not manager.local_worker:
+        raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
+    
+    content = await file.read()
+    content_base64 = base64.b64encode(content).decode('utf-8')
+    
+    CHUNK_SIZE = 512 * 1024
+    
+    await manager.forward_to_worker(json.dumps({ "type": "upload_start", "user_id": user_id, "filename": file.filename }))
+    for i in range(0, len(content_base64), CHUNK_SIZE):
+        await manager.forward_to_worker(json.dumps({ "type": "upload_chunk", "user_id": user_id, "data": content_base64[i:i + CHUNK_SIZE] }))
+    await manager.forward_to_worker(json.dumps({ "type": "upload_end", "user_id": user_id }))
+
+    log_message(f"Finished streaming PDF chunks to worker for user: {user_id}")
+    return {"message": "File sent to worker for processing."}
+
+@app.websocket("/ws/worker")
+async def worker_websocket(websocket: WebSocket):
+    await manager.connect_local_worker(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.forward_to_web_client(data)
+    except WebSocketDisconnect:
+        await manager.disconnect_local_worker()
+
+@app.websocket("/ws/web/{user_id}")
+async def web_client_websocket(websocket: WebSocket, user_id: str):
+    await manager.connect_web_client(websocket, user_id)
+    try:
+        while True:
+            data_text = await websocket.receive_text()
+            data = json.loads(data_text)
+            data['user_id'] = user_id
+            await manager.forward_to_worker(json.dumps(data))
+    except WebSocketDisconnect:
+        manager.disconnect_web_client(user_id)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run(app, host="0.0.0.0", port=8000)
