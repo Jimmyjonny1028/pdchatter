@@ -1,9 +1,3 @@
 fastapi
 uvicorn[standard]
 python-multipart
-google-generativeai
-python-dotenv
-PyMuPDF
-pytesseract
-Pillow
-pydantic
