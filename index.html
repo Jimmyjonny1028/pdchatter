@@ -149,9 +149,11 @@
             let characterQueue = [];
             let renderInterval = null;
             
-            // Track if we're currently streaming to prevent race conditions
-            let isStreaming = false;
-            let currentStreamTarget = null;
+            // Track streaming state more carefully
+            let streamingState = {
+                pdf_chat: { active: false, bubble: null, ended: false },
+                ai_chat: { active: false, bubble: null, ended: false }
+            };
 
             function setUIState(state, message = "") {
                 ui.status.textContent = `Status: ${message}`;
@@ -272,23 +274,7 @@
             function handleServerMessage(message) {
                 console.log("🔧 Handling message type:", message.type, "Target:", message.target);
                 
-                // FIXED: Properly determine which bubble and container to use
-                let targetBubble, targetContainer, targetHistory, stateToSet, statusMsg;
-                const isAIChat = message.target === 'ai_chat';
-                
-                if (isAIChat) {
-                    targetBubble = aiChatStreamingBubble;
-                    targetContainer = ui.chatContainerAI;
-                    targetHistory = aiChatHistory;
-                    stateToSet = 'worker_ready';
-                    statusMsg = 'AI worker connected.';
-                } else {
-                    targetBubble = pdfStreamingBubble;
-                    targetContainer = ui.chatContainer;
-                    targetHistory = pdfChatHistory;
-                    stateToSet = 'ready_to_chat';
-                    statusMsg = `Ready: ${currentPDFName}`;
-                }
+                const targetKey = message.target || 'pdf_chat';
 
                 switch (message.type) {
                     case 'status':
@@ -300,65 +286,42 @@
                         break;
                         
                     case 'answer_chunk':
-                        console.log("📝 Answer chunk received, length:", message.data.length, "Current target:", currentStreamTarget);
+                        console.log("📝 Chunk received for", targetKey, "length:", message.data.length);
                         
-                        // FIXED: Check if this is a new stream or continuation
-                        const targetKey = message.target || 'pdf_chat';
-                        
-                        // If we're not streaming yet, or this is a different target, start new stream
-                        if (!isStreaming || currentStreamTarget !== targetKey) {
+                        // Create bubble on first chunk
+                        if (!streamingState[targetKey].active) {
                             console.log("🆕 Starting NEW stream for", targetKey);
+                            streamingState[targetKey].active = true;
+                            streamingState[targetKey].ended = false;
                             
-                            // Clean up any previous streaming state
-                            if (renderInterval) {
-                                clearInterval(renderInterval);
-                                renderInterval = null;
+                            const bubble = addMessage('', 'ai', targetKey);
+                            streamingState[targetKey].bubble = bubble;
+                            
+                            // Start rendering
+                            if (!renderInterval) {
+                                renderInterval = setInterval(() => renderCharacters(), 10);
                             }
-                            
-                            // Clear old character queue
-                            characterQueue = [];
-                            
-                            // Create new bubble
-                            targetBubble = addMessage('', 'ai', targetKey);
-                            if (isAIChat) {
-                                aiChatStreamingBubble = targetBubble;
-                            } else {
-                                pdfStreamingBubble = targetBubble;
-                            }
-                            
-                            isStreaming = true;
-                            currentStreamTarget = targetKey;
                         }
                         
-                        // Add characters to queue
-                        characterQueue.push(...message.data.split(''));
-                        
-                        // Start render interval if not already running
-                        if (!renderInterval) {
-                            console.log("▶️ Starting render interval");
-                            renderInterval = setInterval(() => renderNextChunk(targetKey), 15);
+                        // Add to the specific bubble
+                        if (streamingState[targetKey].bubble) {
+                            streamingState[targetKey].bubble.textContent += message.data;
+                            const container = targetKey === 'ai_chat' ? ui.chatContainerAI : ui.chatContainer;
+                            container.scrollTop = container.scrollHeight;
                         }
                         break;
                         
                     case 'answer_end':
-                        console.log("✅ Answer end signal received, target:", message.target || currentStreamTarget);
-                        // Wait a bit to ensure all chunks are rendered, then force finalization
-                        setTimeout(() => {
-                            console.log("⏰ Finalizing stream after answer_end...");
-                            if (characterQueue.length === 0 && isStreaming) {
-                                // Force the render to complete
-                                const target = message.target || currentStreamTarget || 'pdf_chat';
-                                finalizeStream(target);
-                            }
-                        }, 100); // Wait 100ms for any remaining chunks to be processed
+                        console.log("✅ Stream END for", targetKey);
+                        streamingState[targetKey].ended = true;
+                        
+                        // Finalize immediately
+                        finalizeStream(targetKey);
                         break;
                         
                     case 'error':
                         console.error("❌ Server error:", message.data);
-                        const errorTarget = currentStreamTarget || activeTab;
-                        addMessage(`Error: ${message.data}`, 'ai', errorTarget);
-                        
-                        // FIXED: Clean up streaming state on error
+                        addMessage(`Error: ${message.data}`, 'ai', targetKey);
                         cleanupStreaming();
                         setUIState('worker_ready', 'Error. Please try again.');
                         break;
@@ -372,76 +335,79 @@
                 }
             }
             
+            function renderCharacters() {
+                // This is now just for smooth scrolling - actual text is added directly
+                // Check if all streams are done
+                let allDone = true;
+                for (let key in streamingState) {
+                    if (streamingState[key].active && !streamingState[key].ended) {
+                        allDone = false;
+                        break;
+                    }
+                }
+                
+                if (allDone) {
+                    if (renderInterval) {
+                        clearInterval(renderInterval);
+                        renderInterval = null;
+                    }
+                }
+            }
+            
             function cleanupStreaming() {
                 if (renderInterval) {
                     clearInterval(renderInterval);
                     renderInterval = null;
                 }
-                characterQueue = [];
-                pdfStreamingBubble = null;
-                aiChatStreamingBubble = null;
-                isStreaming = false;
-                currentStreamTarget = null;
+                streamingState = {
+                    pdf_chat: { active: false, bubble: null, ended: false },
+                    ai_chat: { active: false, bubble: null, ended: false }
+                };
             }
             
-            function renderNextChunk(target) {
-                const isAIChat = target === 'ai_chat';
-                const history = isAIChat ? aiChatHistory : pdfChatHistory;
-                const container = isAIChat ? ui.chatContainerAI : ui.chatContainer;
-                const streamingBubble = isAIChat ? aiChatStreamingBubble : pdfStreamingBubble;
+            function finalizeStream(target) {
+                console.log("🏁 Finalizing stream for", target);
                 
-                // FIXED: Check if queue is empty and clean up
-                if (characterQueue.length === 0) {
-                    console.log("🏁 Render complete, finalizing message");
-                    clearInterval(renderInterval);
-                    renderInterval = null;
-                    
-                    if (streamingBubble && streamingBubble.textContent.trim().length > 0) {
-                        // Convert markdown to HTML
-                        const finalHTML = marked.parse(streamingBubble.textContent);
-                        streamingBubble.innerHTML = finalHTML;
-                        addCopyButtonsTo(streamingBubble);
-                        
-                        // NOW add the complete message to history
-                        history.push({ 
-                            sender: 'ai', 
-                            text: streamingBubble.textContent, 
-                            imageB64: null 
-                        });
-                        
-                        console.log("💾 Message added to history, length:", streamingBubble.textContent.length);
-                        autosaveChat();
-                    } else {
-                        console.warn("⚠️ Streaming bubble was empty, not saving to history");
-                    }
-                    
-                    // FIXED: Clear the streaming state
-                    if (isAIChat) {
-                        aiChatStreamingBubble = null;
-                    } else {
-                        pdfStreamingBubble = null;
-                    }
-                    
-                    isStreaming = false;
-                    currentStreamTarget = null;
-                    
-                    if (target === 'pdf_chat') {
-                        setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
-                    } else {
-                        setUIState('worker_ready', 'AI worker connected.');
-                    }
-                    
+                const state = streamingState[target];
+                if (!state.bubble || !state.active) {
+                    console.warn("⚠️ No active stream to finalize for", target);
                     return;
                 }
                 
-                // Render a batch of characters
-                const batchSize = Math.max(1, Math.floor(characterQueue.length / 4));
-                const charsToRender = characterQueue.splice(0, batchSize).join('');
+                const bubble = state.bubble;
+                const text = bubble.textContent.trim();
                 
-                if (streamingBubble) {
-                    streamingBubble.textContent += charsToRender;
-                    container.scrollTop = container.scrollHeight;
+                if (text.length > 0) {
+                    // Convert markdown to HTML
+                    const finalHTML = marked.parse(text);
+                    bubble.innerHTML = finalHTML;
+                    addCopyButtonsTo(bubble);
+                    
+                    // Add to history
+                    const history = target === 'ai_chat' ? aiChatHistory : pdfChatHistory;
+                    history.push({ 
+                        sender: 'ai', 
+                        text: text, 
+                        imageB64: null 
+                    });
+                    
+                    console.log("💾 Message saved, length:", text.length);
+                    autosaveChat();
                 }
+                
+                // Reset state for this target
+                streamingState[target] = { active: false, bubble: null, ended: false };
+                
+                // Update UI
+                if (target === 'pdf_chat') {
+                    setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                } else {
+                    setUIState('worker_ready', 'AI worker connected.');
+                }
+            }
+            
+            function renderNextChunk(target) {
+                // This function is no longer used - removed
             }
 
             function addMessage(text, sender, target = 'pdf_chat', imageB64 = null) {
@@ -647,7 +613,7 @@
                 if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
                 
                 // Don't allow sending if already streaming
-                if (isStreaming && currentStreamTarget === 'pdf_chat') {
+                if (streamingState.pdf_chat.active) {
                     console.log("⚠️ Already streaming, please wait...");
                     return;
                 }
@@ -670,7 +636,7 @@
                 if ((!question && !uploadedImageB64) || !socket || socket.readyState !== WebSocket.OPEN) return;
                 
                 // Don't allow sending if already streaming
-                if (isStreaming && currentStreamTarget === 'ai_chat') {
+                if (streamingState.ai_chat.active) {
                     console.log("⚠️ Already streaming, please wait...");
                     return;
                 }
