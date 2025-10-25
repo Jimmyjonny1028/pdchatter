@@ -148,6 +148,10 @@
             let socket, statusInterval, pingInterval;
             let characterQueue = [];
             let renderInterval = null;
+            
+            // Track if we're currently streaming to prevent race conditions
+            let isStreaming = false;
+            let currentStreamTarget = null;
 
             function setUIState(state, message = "") {
                 ui.status.textContent = `Status: ${message}`;
@@ -298,46 +302,59 @@
                         break;
                         
                     case 'answer_chunk':
-                        console.log("📝 Answer chunk received, length:", message.data.length);
-                        characterQueue.push(...message.data.split(''));
+                        console.log("📝 Answer chunk received, length:", message.data.length, "Current target:", currentStreamTarget);
                         
-                        // FIXED: Create bubble if it doesn't exist and properly track it
-                        if (!targetBubble) {
-                            console.log("🆕 Creating new streaming bubble for", message.target);
-                            targetBubble = addMessage('', 'ai', message.target || 'pdf_chat');
+                        // FIXED: Check if this is a new stream or continuation
+                        const targetKey = message.target || 'pdf_chat';
+                        
+                        // If we're not streaming yet, or this is a different target, start new stream
+                        if (!isStreaming || currentStreamTarget !== targetKey) {
+                            console.log("🆕 Starting NEW stream for", targetKey);
+                            
+                            // Clean up any previous streaming state
+                            if (renderInterval) {
+                                clearInterval(renderInterval);
+                                renderInterval = null;
+                            }
+                            
+                            // Clear old character queue
+                            characterQueue = [];
+                            
+                            // Create new bubble
+                            targetBubble = addMessage('', 'ai', targetKey);
                             if (isAIChat) {
                                 aiChatStreamingBubble = targetBubble;
                             } else {
                                 pdfStreamingBubble = targetBubble;
                             }
+                            
+                            isStreaming = true;
+                            currentStreamTarget = targetKey;
                         }
                         
-                        // FIXED: Start render interval if not already running
+                        // Add characters to queue
+                        characterQueue.push(...message.data.split(''));
+                        
+                        // Start render interval if not already running
                         if (!renderInterval) {
                             console.log("▶️ Starting render interval");
-                            renderInterval = setInterval(() => renderNextChunk(message.target || 'pdf_chat'), 15);
+                            renderInterval = setInterval(() => renderNextChunk(targetKey), 15);
                         }
                         break;
                         
                     case 'answer_end':
-                        console.log("✅ Answer complete");
+                        console.log("✅ Answer complete, target:", message.target || currentStreamTarget);
+                        // Mark that streaming should finish
                         // The render loop will handle cleanup when queue is empty
                         break;
                         
                     case 'error':
                         console.error("❌ Server error:", message.data);
-                        const errorTarget = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
+                        const errorTarget = currentStreamTarget || activeTab;
                         addMessage(`Error: ${message.data}`, 'ai', errorTarget);
                         
                         // FIXED: Clean up streaming state on error
-                        if (renderInterval) {
-                            clearInterval(renderInterval);
-                            renderInterval = null;
-                        }
-                        characterQueue = [];
-                        pdfStreamingBubble = null;
-                        aiChatStreamingBubble = null;
-                        
+                        cleanupStreaming();
                         setUIState('worker_ready', 'Error. Please try again.');
                         break;
                         
@@ -348,6 +365,18 @@
                     default:
                         console.warn("⚠️ Unknown message type:", message.type);
                 }
+            }
+            
+            function cleanupStreaming() {
+                if (renderInterval) {
+                    clearInterval(renderInterval);
+                    renderInterval = null;
+                }
+                characterQueue = [];
+                pdfStreamingBubble = null;
+                aiChatStreamingBubble = null;
+                isStreaming = false;
+                currentStreamTarget = null;
             }
             
             function renderNextChunk(target) {
@@ -368,11 +397,12 @@
                         streamingBubble.innerHTML = finalHTML;
                         addCopyButtonsTo(streamingBubble);
                         
-                        // Update history
-                        const lastMessage = history[history.length - 1];
-                        if (lastMessage && lastMessage.sender === 'ai') {
-                            lastMessage.text = streamingBubble.textContent;
-                        }
+                        // NOW add the complete message to history
+                        history.push({ 
+                            sender: 'ai', 
+                            text: streamingBubble.textContent, 
+                            imageB64: null 
+                        });
                         
                         autosaveChat();
                     }
