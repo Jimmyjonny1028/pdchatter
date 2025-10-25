@@ -22,9 +22,16 @@
 <body class="bg-gray-100 h-screen overflow-hidden">
 
     <div class="flex h-full">
-        <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20"></aside>
+        <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
+                <h2 class="text-xl font-bold">Saved Chats</h2>
+                <button id="close-sidebar-button" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2"></div>
+        </aside>
+
         <div class="flex-1 flex flex-col h-full">
-            <header class="bg-white shadow-md p-4 flex items-center justify-between">
+             <header class="bg-white shadow-md p-4 flex items-center justify-between">
                 <div class="flex items-center space-x-4">
                     <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -34,9 +41,9 @@
                         <p id="status" class="text-sm text-gray-500">Status: Connecting to server...</p>
                     </div>
                 </div>
-                <div>
-                    <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">ChatPDF</button>
-                    <button id="tab-watermark" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">Watermark Remover</button>
+                <div class="border-b-2 border-transparent">
+                    <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none active">ChatPDF</button>
+                    <button id="tab-watermark" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2 border-transparent hover:border-gray-300 focus:outline-none">Watermark Remover</button>
                 </div>
             </header>
 
@@ -54,8 +61,8 @@
                                 <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">📁 Upload</label>
                                 <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
                             </div>
-                            <input type="text" id="message-input" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2" placeholder="Please connect to worker..." disabled>
-                            <button id="send-button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
+                            <input type="text" id="message-input" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400" placeholder="Please connect to worker..." disabled>
+                            <button id="send-button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg cursor-not-allowed" disabled>Send</button>
                         </div>
                     </footer>
                 </section>
@@ -82,8 +89,6 @@
         let socket;
         let statusInterval;
         let pingInterval;
-        let characterQueue = [];
-        let renderInterval = null; // MODIFIED: Use setInterval instead of animation frames
 
         function setUIState(state, message = "") {
             ui.status.textContent = `Status: ${message}`;
@@ -99,17 +104,16 @@
 
             if (isChatReady) {
                 ui.messageInput.placeholder = "Ask a question about the PDF...";
-                ui.sendButton.classList.remove('bg-gray-500');
+                ui.sendButton.classList.remove('bg-gray-500', 'cursor-not-allowed');
                 ui.sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
             } else {
                 ui.messageInput.placeholder = message;
-                ui.sendButton.classList.add('bg-gray-500');
+                ui.sendButton.classList.add('bg-gray-500', 'cursor-not-allowed');
                 ui.sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
             }
         }
 
         async function checkWorkerStatus() {
-            // This function is fine, no changes needed
             try {
                 const response = await fetch(`/status`);
                 const data = await response.json();
@@ -126,13 +130,12 @@
         }
 
         function connectWebSocket() {
-            // This function is fine, no changes needed
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
-                console.log("WebSocket connected.");
+                console.log("WebSocket connected successfully.");
                 if (pingInterval) clearInterval(pingInterval);
                 pingInterval = setInterval(() => {
                     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -146,24 +149,27 @@
                     const message = JSON.parse(event.data);
                     handleServerMessage(message);
                 } catch (error) {
-                    console.error("Failed to handle message:", error);
+                    console.error("Failed to parse or handle message:", error);
                 }
             };
 
-            socket.onclose = () => {
-                console.log("WebSocket disconnected.");
+            socket.onclose = (event) => {
+                console.log("WebSocket disconnected. Code:", event.code, "Reason:", event.reason);
                 clearInterval(pingInterval);
-                if (renderInterval) clearInterval(renderInterval); // Clean up render interval on disconnect
                 setUIState('disconnected', 'Disconnected. Trying to reconnect...');
-                if (!statusInterval) {
-                    statusInterval = setInterval(checkWorkerStatus, 3000);
-                }
+                if (statusInterval) clearInterval(statusInterval);
+                statusInterval = setInterval(checkWorkerStatus, 3000);
             };
             
-            socket.onerror = (error) => console.error("WebSocket Error:", error);
+            socket.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+            };
         }
         
-        // --- MODIFIED: More efficient and stable rendering logic ---
+        function simpleMarkdownToHTML(text) {
+            return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        }
+
         function handleServerMessage(message) {
             switch (message.type) {
                 case 'status':
@@ -173,54 +179,28 @@
                     }
                     break;
                 case 'answer_chunk':
-                    if (message.data) {
-                        characterQueue.push(...message.data.split(''));
-                    }
                     if (!currentStreamingBubble) {
                         currentStreamingBubble = addMessage('', 'ai');
                     }
-                    // Start the rendering interval if it's not already running
-                    if (!renderInterval) {
-                        renderInterval = setInterval(renderNextChunk, 30); // Render every 30ms
-                    }
+                    currentStreamingBubble.textContent += message.data;
+                    ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
                     break;
                 case 'answer_end':
-                    // Don't stop rendering immediately. The loop will stop itself when the queue is empty.
+                    if (currentStreamingBubble) {
+                        currentStreamingBubble.innerHTML = simpleMarkdownToHTML(currentStreamingBubble.textContent);
+                    }
+                    currentStreamingBubble = null; 
+                    setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                     break;
                 case 'error':
                     addMessage(`Error: ${message.data}`, 'ai');
                     setUIState('worker_ready', 'Error. Please try again.');
-                    // Force stop rendering on error
-                    if (renderInterval) clearInterval(renderInterval);
-                    renderInterval = null;
-                    characterQueue = [];
                     currentStreamingBubble = null;
                     break;
             }
         }
-        
-        function renderNextChunk() {
-            if (characterQueue.length === 0) {
-                // If queue is empty, stop the interval and reset
-                clearInterval(renderInterval);
-                renderInterval = null;
-                currentStreamingBubble = null;
-                setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
-                return;
-            }
-            
-            // Pull a batch of characters from the queue to render
-            const batchSize = Math.max(1, Math.floor(characterQueue.length / 4)); // Render a fraction of the queue for smoothness
-            const charsToRender = characterQueue.splice(0, batchSize).join('');
-            
-            if (currentStreamingBubble) {
-                currentStreamingBubble.textContent += charsToRender;
-                ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
-            }
-        }
 
         function addMessage(text, sender) {
-            // This function is fine, no changes needed
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
             if (sender === 'user') {
@@ -235,7 +215,6 @@
         }
 
         async function uploadPDF() {
-            // This function is fine, no changes needed
             const file = ui.pdfUploadInput.files[0];
             if (!file) return;
             ui.chatContainer.innerHTML = '';
@@ -259,7 +238,6 @@
         }
 
         function sendMessage() {
-            // This function is fine, no changes needed
             const question = ui.messageInput.value.trim();
             if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
             addMessage(question, 'user');
@@ -268,7 +246,6 @@
             setUIState('ai_thinking', 'AI is thinking...');
         }
         
-        // --- INITIALIZE ---
         ui.pdfUploadInput.addEventListener('change', uploadPDF);
         ui.sendButton.addEventListener('click', sendMessage);
         ui.messageInput.addEventListener('keydown', (event) => {
