@@ -425,10 +425,13 @@
                 container.appendChild(bubble);
                 container.scrollTop = container.scrollHeight;
                 
-                if (sender !== 'system') {
-                    if (text !== '' || sender === 'user') {
-                        history.push({ sender, text, imageB64 });
-                    }
+                // Only add to history if it's a user message or a non-empty AI message
+                // Don't add streaming AI messages to history yet (they'll be added when complete)
+                if (sender === 'user') {
+                    history.push({ sender, text, imageB64});
+                } else if (sender !== 'system' && text !== '') {
+                    // Only add non-streaming AI messages (like status messages)
+                    history.push({ sender, text, imageB64 });
                 }
                 
                 return bubble;
