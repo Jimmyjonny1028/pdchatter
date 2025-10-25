@@ -244,11 +244,11 @@
             
             // --- UPDATED STREAM STATE TO MANAGE THOUGHTS SEPARATELY ---
             let streamingState = {
-                pdf_chat: { active: false, bubble: null, ended: false, textBuffer: '', currentText: '' },
-                ai_chat: { active: false, bubble: null, ended: false, textBuffer: '', currentText: '' },
-                // NEW: Stream state for thought process
-                pdf_thoughts: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '' },
-                ai_thoughts: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '' }
+                pdf_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '' },
+                ai_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '' },
+                // NEW: Stream state for thought process, including summary element
+                pdf_thoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' },
+                ai_thoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' }
             };
 
             // Render at a smooth, constant interval for a fluid, human-like typing effect
@@ -380,22 +380,22 @@
             
             function addMessage(text, sender, target = 'pdf_chat', imageB64 = null) {
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
-                const container = (target === 'ai_chat' || target === 'ai_thoughts') ? ui.chatContainerAI : ui.chatContainer;
-                
-                const bubble = document.createElement('div');
+                // Determine container based on whether it's PDF or AI Chat
+                const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
                 
                 // ADDED: Logic for the Thoughts bubble
                 if (target.endsWith('_thoughts')) {
-                    bubble.classList.add('thoughts-bubble', 'w-full'); // Full width for thoughts
+                    const bubble = document.createElement('div');
+                    bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto'); // Full width for thoughts
                     
                     const details = document.createElement('details');
                     details.classList.add('w-full');
                     
                     const summary = document.createElement('summary');
-                    summary.textContent = '...AI is thinking...';
+                    summary.textContent = '...AI is thinking... (Click to view)';
                     
                     const contentDiv = document.createElement('div');
-                    contentDiv.classList.add('thoughts-content', 'pt-2');
+                    contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1'); // Padding for content
                     
                     details.appendChild(summary);
                     details.appendChild(contentDiv);
@@ -409,6 +409,7 @@
                 }
                 
                 // Standard Chat Bubbles
+                const bubble = document.createElement('div');
                 bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
                 
                 if (sender === 'user') {
@@ -435,7 +436,8 @@
                     history.push({ sender, text: text, imageB64 });
                 }
                 
-                return { bubble: bubble, contentDiv: textNode };
+                // Return the necessary elements for the main chat stream
+                return { bubble: bubble, contentDiv: textNode, summary: null };
             }
 
             function handleServerMessage(message) {
@@ -450,7 +452,7 @@
                     case 'status':
                         console.log("📊 Status update:", message.data);
                         // Using mainTarget here to ensure correct chat container is used
-                        const result = addMessage(message.data, 'ai', mainTarget);
+                        addMessage(message.data, 'ai', mainTarget);
                         if (message.data.includes("Ready for questions")) {
                             setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                         }
@@ -461,25 +463,34 @@
                         
                         if (!streamingState[targetKey].active) {
                             console.log("🆕 Starting NEW stream for", targetKey);
+                            
+                            // Initialize stream state
                             streamingState[targetKey].active = true;
                             streamingState[targetKey].ended = false;
-                            streamingState[targetKey].textBuffer = ''; // Clear any old buffer
+                            streamingState[targetKey].textBuffer = ''; 
                             streamingState[targetKey].currentText = '';
 
                             if (targetKey.endsWith('_thoughts')) {
-                                // ADDED: Create the Thoughts dropdown right before the main answer bubble starts
+                                // ADDED: Create the Thoughts dropdown first
                                 const thoughtElements = addMessage('', 'ai', targetKey);
                                 streamingState[targetKey].bubble = thoughtElements.bubble;
                                 streamingState[targetKey].contentDiv = thoughtElements.contentDiv;
                                 streamingState[targetKey].summary = thoughtElements.summary;
-                                // The main target should also be marked active, even if its bubble is not yet created
+                                
+                                // Mark the main stream as active too, since the whole response process is starting
                                 streamingState[mainTarget].active = true; 
                                 setUIState('ai_thinking', 'AI is thinking...'); 
                             } else {
-                                // Create the standard answer bubble
-                                const answerElements = addMessage('', 'ai', targetKey);
-                                streamingState[targetKey].bubble = answerElements.bubble;
-                                streamingState[targetKey].contentDiv = answerElements.contentDiv;
+                                // If it's the main chat stream and it's starting, the thoughts stream *should* have already started.
+                                // If the thoughts stream isn't active, create the main chat bubble.
+                                if (!streamingState[mainTarget.replace('_chat', '_thoughts')].active) {
+                                    const answerElements = addMessage('', 'ai', targetKey);
+                                    streamingState[targetKey].bubble = answerElements.bubble;
+                                    streamingState[targetKey].contentDiv = answerElements.contentDiv;
+                                } else {
+                                    // If thoughts are active, the main stream's bubble will be created when thoughts end.
+                                    // For now, we just proceed with buffering the answer chunk.
+                                }
                             }
                             
                             // Start rendering loop if it's not already running
@@ -501,32 +512,19 @@
                              if (state.summary) {
                                 state.summary.textContent = 'View Thinking Process (Finished)';
                              }
-                             // Now, ensure the main answer stream starts if it hasn't already
-                             if (!streamingState[mainTarget].active) {
-                                 const answerElements = addMessage('', 'ai', mainTarget);
-                                 streamingState[mainTarget].active = true;
-                                 streamingState[mainTarget].bubble = answerElements.bubble;
-                                 streamingState[mainTarget].contentDiv = answerElements.contentDiv;
-                             }
                         }
 
-                        // Check if both thought and main chat streams are ended for the main target
-                        if (targetKey === 'pdf_chat' || targetKey === 'ai_chat') {
-                            // The finalization logic now lives in renderCharacters to ensure buffers are clear
-                        }
+                        // Finalization logic lives in renderCharacters to ensure buffers are clear
                         break;
                         
                     case 'error':
                         console.error("❌ Server error:", message.data);
-                        // Use mainTarget to ensure the error bubble lands in the correct container
                         addMessage(`Error: ${message.data}`, 'ai', mainTarget);
                         // Call finalizeStream with error flag to reset UI state after an error
                         finalizeStream(mainTarget, true); 
                         
                         // Also forcibly clean up the thought stream if it existed
-                        if (streamingState[mainTarget.replace('_chat', '_thoughts')].active) {
-                            cleanupStreaming(mainTarget.replace('_chat', '_thoughts'));
-                        }
+                        cleanupStreaming(mainTarget.replace('_chat', '_thoughts'));
                         break;
                         
                     case 'pong':
@@ -544,36 +542,45 @@
                     const state = streamingState[key];
                     
                     if (state.active) {
-                        allDone = false; // An active stream means we're not done
+                        allDone = false; 
                         
-                        if (state.textBuffer.length > 0) {
+                        // 1. Create Main Answer Bubble if Thoughts just finished
+                        if (key.endsWith('_chat') && streamingState[key.replace('_chat', '_thoughts')].ended && !state.bubble) {
+                            console.log(`Creating main chat bubble for ${key} after thoughts end.`);
+                            const answerElements = addMessage('', 'ai', key);
+                            state.bubble = answerElements.bubble;
+                            state.contentDiv = answerElements.contentDiv;
+                        }
+
+                        if (state.textBuffer.length > 0 || (state.ended && state.currentText.length > 0)) {
+                            
                             // Take a slice of the buffer and append to current text
                             const charsToRender = Math.min(state.textBuffer.length, CHARS_PER_TICK);
                             const chunk = state.textBuffer.substring(0, charsToRender);
                             state.currentText += chunk;
                             state.textBuffer = state.textBuffer.substring(charsToRender);
 
-                            // Render the current accumulated text as Markdown
+                            // Only render if we have a contentDiv ready
                             if (state.contentDiv) {
-                                // Only use marked.parse on the thought section at the end for performance/stability
+                                
                                 if (key.endsWith('_thoughts')) {
+                                    // For thoughts, marked.parse is fine for quick updates
                                     state.contentDiv.innerHTML = marked.parse(state.currentText);
-                                } else {
+                                } else if (key.endsWith('_chat')) {
                                     // For the main answer, render slowly into textContent until finalized
                                     state.contentDiv.textContent = state.currentText;
                                 }
                                 
-                                const container = key.endsWith('_thoughts') || key.endsWith('_chat') ? (key.includes('ai_') ? ui.chatContainerAI : ui.chatContainer) : null;
-                                if (container) {
-                                    container.scrollTop = container.scrollHeight;
-                                }
+                                const container = key.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
+                                container.scrollTop = container.scrollHeight;
                             }
                         }
                         
-                        // If the stream ended AND the buffer is empty, finalize it
+                        // 2. Finalization Check
                         if (state.ended && state.textBuffer.length === 0) {
-                            // Finalize thoughts first (which updates the summary and cleans up its state)
+                            
                             if (key.endsWith('_thoughts')) {
+                                // Finalize thoughts first (which updates the summary and cleans up its state)
                                 finalizeStream(key);
                             } else if (key.endsWith('_chat')) {
                                 // Only finalize the main chat if the corresponding thoughts stream is also inactive/cleaned up
@@ -595,13 +602,13 @@
             }
             
             function cleanupStreaming(target) {
-                // Determine if we're cleaning a chat target or a thoughts target
+                // Determine the targets to clean
                 const targets = [target];
+                // If cleaning the main chat, make sure its thought stream is also cleaned up
                 if (target.endsWith('_chat')) {
                     targets.push(target.replace('_chat', '_thoughts'));
-                } else if (target.endsWith('_thoughts')) {
-                    targets.push(target.replace('_thoughts', '_chat'));
                 }
+                // If cleaning the thought stream, it should already be handled by the main chat cleanup
                 
                 targets.forEach(key => {
                     if (streamingState[key]) {
@@ -633,15 +640,6 @@
                     return;
                 }
 
-                // If this is the main chat finalizing, ensure thoughts are already cleaned up
-                if (target.endsWith('_chat')) {
-                    const thoughtKey = target.replace('_chat', '_thoughts');
-                    if (streamingState[thoughtKey].active) {
-                         // Force cleanup the thoughts stream if it was left hanging
-                         finalizeStream(thoughtKey, true); 
-                    }
-                }
-
                 // 1. Force render any remaining buffered text
                 if (state.textBuffer.length > 0) {
                     state.currentText += state.textBuffer;
@@ -650,13 +648,18 @@
                 
                 const text = state.currentText.trim(); 
                 
-                if (text.length > 0 && state.contentDiv) {
+                if (state.contentDiv) {
                     // 2. Final conversion: ALWAYS marked.parse on final result
                     state.contentDiv.innerHTML = marked.parse(text);
                     addCopyButtonsTo(state.contentDiv);
                     
+                    // If it's a thoughts bubble, the text is the full thought process. We don't save this to chat history.
+                    if (target.endsWith('_thoughts') && state.summary) {
+                         state.summary.textContent = 'View Thinking Process (Finished)';
+                    }
+                    
                     // 3. Save to History (Only for the main chat answer)
-                    if (target.endsWith('_chat') && !isError) {
+                    if (target.endsWith('_chat') && !isError && text.length > 0) {
                         const history = target === 'ai_chat' ? aiChatHistory : pdfChatHistory;
                         history.push({ 
                             sender: 'ai', 
@@ -670,6 +673,7 @@
                 // 4. Reset UI and cleanup state
                 cleanupStreaming(target);
 
+                // Only reset the main UI state if the primary answer stream is done
                 if (target.endsWith('_chat')) {
                     if (target === 'pdf_chat' && currentPDFName) {
                         setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
