@@ -1,4 +1,4 @@
-# File: server.py (Final version, ignores pings from web clients)
+# File: server.py (This is the code that should be on Render)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 import uvicorn
@@ -93,7 +93,6 @@ async def web_client_websocket(websocket: WebSocket, user_id: str):
         while True:
             data_text = await websocket.receive_text()
             data = json.loads(data_text)
-            # NEW: Ignore ping messages from the browser
             if data.get("type") == "ping":
                 continue
             data['user_id'] = user_id
