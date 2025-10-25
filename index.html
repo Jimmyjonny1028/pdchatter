@@ -118,7 +118,6 @@
                 chatContainer: document.getElementById('chat-container'),
                 messageInput: document.getElementById('message-input'),
                 sendButton: document.getElementById('send-button'),
-                saveChatButtonPDF: document.querySelector('#view-chatpdf button[id^="save-chat-button"]'),
                 pdfUploadInput: document.getElementById('pdf-upload'),
                 uploadLabel: document.getElementById('upload-label'),
                 pdfViewer: document.getElementById('pdf-viewer'),
@@ -127,7 +126,6 @@
                 chatContainerAI: document.getElementById('chat-container-ai'),
                 messageInputAI: document.getElementById('message-input-ai'),
                 sendButtonAI: document.getElementById('send-button-ai'),
-                saveChatButtonAI: document.querySelector('#view-ai-chat button[id^="save-chat-button"]'),
                 imageUploadAI: document.getElementById('image-upload-ai'),
                 imagePreviewContainerAI: document.getElementById('image-preview-container-ai'),
                 imagePreviewAI: document.getElementById('image-preview-ai'),
@@ -143,7 +141,10 @@
             let activeTab = 'pdf_chat';
             let uploadedImageB64 = null;
 
-            let currentStreamingBubble = null;
+            // FIXED: Properly declare streaming bubble variables
+            let pdfStreamingBubble = null;
+            let aiChatStreamingBubble = null;
+            
             let socket, statusInterval, pingInterval;
             let characterQueue = [];
             let renderInterval = null;
@@ -154,8 +155,12 @@
                 const isWorkerReady = state === 'worker_ready' || isChatReady;
                 
                 ui.pdfUploadInput.disabled = !isWorkerReady;
+                ui.uploadLabel.classList.toggle('cursor-not-allowed', !isWorkerReady);
+                ui.uploadLabel.classList.toggle('cursor-pointer', isWorkerReady);
                 ui.uploadLabel.classList.toggle('bg-gray-500', !isWorkerReady);
                 ui.uploadLabel.classList.toggle('bg-blue-500', isWorkerReady);
+                ui.uploadLabel.classList.toggle('hover:bg-blue-600', isWorkerReady);
+                
                 ui.messageInput.disabled = !isChatReady;
                 ui.sendButton.disabled = !isChatReady;
                 ui.messageInputAI.disabled = !isWorkerReady;
@@ -163,18 +168,22 @@
 
                 if (isChatReady) {
                     ui.messageInput.placeholder = "Ask a question about the PDF...";
-                    ui.sendButton.classList.remove('bg-gray-500'); ui.sendButton.classList.add('bg-green-500');
+                    ui.sendButton.classList.remove('bg-gray-500'); 
+                    ui.sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
                 } else {
                     ui.messageInput.placeholder = message;
-                    ui.sendButton.classList.add('bg-gray-500'); ui.sendButton.classList.remove('bg-green-500');
+                    ui.sendButton.classList.add('bg-gray-500'); 
+                    ui.sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
                 }
 
                 if (isWorkerReady) {
                     ui.messageInputAI.placeholder = "Send a message, or paste an image...";
-                    ui.sendButtonAI.classList.remove('bg-gray-500'); ui.sendButtonAI.classList.add('bg-green-500');
+                    ui.sendButtonAI.classList.remove('bg-gray-500'); 
+                    ui.sendButtonAI.classList.add('bg-green-500', 'hover:bg-green-600');
                 } else {
                     ui.messageInputAI.placeholder = message;
-                    ui.sendButtonAI.classList.add('bg-gray-500'); ui.sendButtonAI.classList.remove('bg-green-500');
+                    ui.sendButtonAI.classList.add('bg-gray-500'); 
+                    ui.sendButtonAI.classList.remove('bg-green-500', 'hover:bg-green-600');
                 }
             }
 
@@ -191,6 +200,7 @@
                         setUIState('waiting_for_worker', 'Waiting for local AI worker...');
                     }
                 } catch (error) {
+                    console.error('Status check error:', error);
                     setUIState('error', 'Could not connect to server.');
                 }
             }
@@ -198,35 +208,46 @@
             function connectWebSocket() {
                 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
+                console.log('Connecting to WebSocket:', wsUrl);
                 socket = new WebSocket(wsUrl);
 
                 socket.onopen = () => {
-                    console.log("WebSocket connected.");
+                    console.log("✅ WebSocket connected successfully");
                     if (pingInterval) clearInterval(pingInterval);
                     pingInterval = setInterval(() => {
                         if (socket && socket.readyState === WebSocket.OPEN) {
                             socket.send(JSON.stringify({ type: 'ping' }));
                         }
-                    }, 20000); // Send a ping every 20 seconds
+                    }, 20000);
                 };
 
                 socket.onmessage = (event) => {
+                    console.log("📨 Message received:", event.data);
                     try {
                         const message = JSON.parse(event.data);
                         handleServerMessage(message);
                     } catch (error) {
-                        console.error("Failed to handle message:", error);
+                        console.error("❌ Failed to handle message:", error, event.data);
                     }
                 };
-                socket.onclose = () => {
-                    console.log("WebSocket disconnected.");
+                
+                socket.onclose = (event) => {
+                    console.log("🔌 WebSocket disconnected. Code:", event.code, "Reason:", event.reason);
                     clearInterval(pingInterval);
                     if (renderInterval) clearInterval(renderInterval);
+                    renderInterval = null;
+                    characterQueue = [];
+                    pdfStreamingBubble = null;
+                    aiChatStreamingBubble = null;
+                    
                     setUIState('disconnected', 'Disconnected. Trying to reconnect...');
                     if (statusInterval) clearInterval(statusInterval);
                     statusInterval = setInterval(checkWorkerStatus, 3000);
                 };
-                socket.onerror = (error) => console.error("WebSocket Error:", error);
+                
+                socket.onerror = (error) => {
+                    console.error("❌ WebSocket Error:", error);
+                };
             }
 
             function addCopyButtonsTo(containerElement) {
@@ -237,7 +258,7 @@
                     button.textContent = 'Copy';
                     block.appendChild(button);
                     button.addEventListener('click', () => {
-                        const code = block.querySelector('code').innerText;
+                        const code = block.querySelector('code')?.innerText || block.innerText;
                         navigator.clipboard.writeText(code).then(() => {
                             button.textContent = 'Copied!';
                             setTimeout(() => { button.textContent = 'Copy'; }, 2000);
@@ -247,75 +268,133 @@
             }
 
             function handleServerMessage(message) {
-                let targetBubble, targetContainer, stateToSet, statusMsg;
-                if (message.target === 'ai_chat') {
+                console.log("🔧 Handling message type:", message.type, "Target:", message.target);
+                
+                // FIXED: Properly determine which bubble and container to use
+                let targetBubble, targetContainer, targetHistory, stateToSet, statusMsg;
+                const isAIChat = message.target === 'ai_chat';
+                
+                if (isAIChat) {
                     targetBubble = aiChatStreamingBubble;
                     targetContainer = ui.chatContainerAI;
+                    targetHistory = aiChatHistory;
                     stateToSet = 'worker_ready';
                     statusMsg = 'AI worker connected.';
                 } else {
                     targetBubble = pdfStreamingBubble;
                     targetContainer = ui.chatContainer;
+                    targetHistory = pdfChatHistory;
                     stateToSet = 'ready_to_chat';
                     statusMsg = `Ready: ${currentPDFName}`;
                 }
 
                 switch (message.type) {
                     case 'status':
+                        console.log("📊 Status update:", message.data);
                         addMessage(message.data, 'ai', 'pdf_chat');
                         if (message.data.includes("Ready for questions")) {
                             setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                         }
                         break;
+                        
                     case 'answer_chunk':
+                        console.log("📝 Answer chunk received, length:", message.data.length);
                         characterQueue.push(...message.data.split(''));
+                        
+                        // FIXED: Create bubble if it doesn't exist and properly track it
                         if (!targetBubble) {
-                            targetBubble = addMessage('', 'ai', message.target);
-                            if (message.target === 'ai_chat') aiChatStreamingBubble = targetBubble;
-                            else pdfStreamingBubble = targetBubble;
+                            console.log("🆕 Creating new streaming bubble for", message.target);
+                            targetBubble = addMessage('', 'ai', message.target || 'pdf_chat');
+                            if (isAIChat) {
+                                aiChatStreamingBubble = targetBubble;
+                            } else {
+                                pdfStreamingBubble = targetBubble;
+                            }
                         }
+                        
+                        // FIXED: Start render interval if not already running
                         if (!renderInterval) {
-                            renderInterval = setInterval(() => renderNextChunk(message.target), 15);
+                            console.log("▶️ Starting render interval");
+                            renderInterval = setInterval(() => renderNextChunk(message.target || 'pdf_chat'), 15);
                         }
                         break;
+                        
                     case 'answer_end':
-                        // Let the render loop finish and handle cleanup
+                        console.log("✅ Answer complete");
+                        // The render loop will handle cleanup when queue is empty
                         break;
+                        
                     case 'error':
-                        const target = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
-                        addMessage(`Error: ${message.data}`, 'ai', target);
+                        console.error("❌ Server error:", message.data);
+                        const errorTarget = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
+                        addMessage(`Error: ${message.data}`, 'ai', errorTarget);
+                        
+                        // FIXED: Clean up streaming state on error
+                        if (renderInterval) {
+                            clearInterval(renderInterval);
+                            renderInterval = null;
+                        }
+                        characterQueue = [];
+                        pdfStreamingBubble = null;
+                        aiChatStreamingBubble = null;
+                        
                         setUIState('worker_ready', 'Error. Please try again.');
-                        if (renderInterval) clearInterval(renderInterval);
-                        renderInterval = null; characterQueue = []; currentStreamingBubble = null;
                         break;
+                        
+                    case 'pong':
+                        // Ignore pong responses
+                        break;
+                        
+                    default:
+                        console.warn("⚠️ Unknown message type:", message.type);
                 }
             }
             
             function renderNextChunk(target) {
-                const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
-                const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
+                const isAIChat = target === 'ai_chat';
+                const history = isAIChat ? aiChatHistory : pdfChatHistory;
+                const container = isAIChat ? ui.chatContainerAI : ui.chatContainer;
+                const streamingBubble = isAIChat ? aiChatStreamingBubble : pdfStreamingBubble;
+                
+                // FIXED: Check if queue is empty and clean up
                 if (characterQueue.length === 0) {
+                    console.log("🏁 Render complete, cleaning up");
                     clearInterval(renderInterval);
                     renderInterval = null;
-                    if (currentStreamingBubble) {
-                        const finalHTML = marked.parse(currentStreamingBubble.textContent);
-                        currentStreamingBubble.innerHTML = finalHTML;
-                        addCopyButtonsTo(currentStreamingBubble);
+                    
+                    if (streamingBubble) {
+                        // Convert markdown to HTML
+                        const finalHTML = marked.parse(streamingBubble.textContent);
+                        streamingBubble.innerHTML = finalHTML;
+                        addCopyButtonsTo(streamingBubble);
+                        
+                        // Update history
                         const lastMessage = history[history.length - 1];
                         if (lastMessage && lastMessage.sender === 'ai') {
-                            lastMessage.text = currentStreamingBubble.textContent;
+                            lastMessage.text = streamingBubble.textContent;
                         }
+                        
                         autosaveChat();
                     }
-                    currentStreamingBubble = null;
-                    if (target === 'pdf_chat') setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
-                    else setUIState('worker_ready', 'AI worker connected.');
+                    
+                    // FIXED: Clear the appropriate streaming bubble
+                    if (isAIChat) {
+                        aiChatStreamingBubble = null;
+                        setUIState('worker_ready', 'AI worker connected.');
+                    } else {
+                        pdfStreamingBubble = null;
+                        setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    }
+                    
                     return;
                 }
+                
+                // Render a batch of characters
                 const batchSize = Math.max(1, Math.floor(characterQueue.length / 4));
                 const charsToRender = characterQueue.splice(0, batchSize).join('');
-                if (currentStreamingBubble) {
-                    currentStreamingBubble.textContent += charsToRender;
+                
+                if (streamingBubble) {
+                    streamingBubble.textContent += charsToRender;
                     container.scrollTop = container.scrollHeight;
                 }
             }
@@ -323,26 +402,35 @@
             function addMessage(text, sender, target = 'pdf_chat', imageB64 = null) {
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
+                
                 const bubble = document.createElement('div');
                 bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
-                if (sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
-                else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                
+                if (sender === 'user') {
+                    bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+                } else {
+                    bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                }
+                
                 const textNode = document.createElement('div');
                 textNode.textContent = text;
                 bubble.appendChild(textNode);
+                
                 if (sender === 'user' && imageB64) {
                     const img = document.createElement('img');
                     img.src = `data:image/jpeg;base64,${imageB64}`;
                     bubble.appendChild(img);
                 }
+                
                 container.appendChild(bubble);
                 container.scrollTop = container.scrollHeight;
+                
                 if (sender !== 'system') {
                     if (text !== '' || sender === 'user') {
                         history.push({ sender, text, imageB64 });
                     }
                 }
-                setUIState(ui.status.textContent.replace('Status: ', ''));
+                
                 return bubble;
             }
 
@@ -375,23 +463,35 @@
             function autosaveChat() {
                 const historyToSave = (activeTab === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 if (historyToSave.length === 0) return;
+                
                 let chatId = (activeTab === 'ai_chat') ? sessionStorage.getItem('currentAIChatId') : sessionStorage.getItem('currentPdfChatId');
                 const firstUserMessage = historyToSave.find(m => m.sender === 'user')?.text || 'New Chat';
                 const chatName = (activeTab === 'pdf_chat' && currentPDFName) ? `${currentPDFName.replace('.pdf', '')}` : firstUserMessage.substring(0, 30);
+                
                 if (!chatId) {
                     chatId = `chat_${Date.now()}`;
                     if (activeTab === 'ai_chat') sessionStorage.setItem('currentAIChatId', chatId);
                     else sessionStorage.setItem('currentPdfChatId', chatId);
                 }
-                const chatData = { id: chatId, name: chatName, type: activeTab, timestamp: new Date().toISOString(), history: historyToSave, pdfName: (activeTab === 'pdf_chat') ? currentPDFName : null };
+                
+                const chatData = { 
+                    id: chatId, 
+                    name: chatName, 
+                    type: activeTab, 
+                    timestamp: new Date().toISOString(), 
+                    history: historyToSave, 
+                    pdfName: (activeTab === 'pdf_chat') ? currentPDFName : null 
+                };
+                
                 localStorage.setItem(chatId, JSON.stringify(chatData));
-                console.log(`Autosaved chat: ${chatName}`);
+                console.log(`💾 Autosaved chat: ${chatName}`);
             }
             
             function loadSavedChats() {
                 ui.sidebarTitle.textContent = activeTab === 'pdf_chat' ? "Saved PDF Chats" : "Saved AI Chats";
                 ui.savedChatsList.innerHTML = '';
                 const chats = [];
+                
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
                     if (key.startsWith('chat_')) {
@@ -399,7 +499,9 @@
                         if (chat.type === activeTab) chats.push(chat);
                     }
                 }
+                
                 chats.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
                 if (chats.length === 0) {
                     ui.savedChatsList.innerHTML = '<p class="text-slate-400">No saved chats.</p>';
                 } else {
@@ -408,10 +510,17 @@
                         item.className = 'p-2 bg-slate-700 rounded-md cursor-pointer hover:bg-slate-600 truncate flex justify-between items-center';
                         item.textContent = chat.name;
                         item.onclick = () => loadChat(chat.id);
+                        
                         const deleteBtn = document.createElement('button');
                         deleteBtn.className = 'text-red-400 hover:text-red-300 ml-2';
                         deleteBtn.innerHTML = '&times;';
-                        deleteBtn.onclick = (e) => { e.stopPropagation(); if (confirm(`Delete "${chat.name}"?`)) { localStorage.removeItem(chat.id); loadSavedChats(); } };
+                        deleteBtn.onclick = (e) => { 
+                            e.stopPropagation(); 
+                            if (confirm(`Delete "${chat.name}"?`)) { 
+                                localStorage.removeItem(chat.id); 
+                                loadSavedChats(); 
+                            } 
+                        };
                         item.appendChild(deleteBtn);
                         ui.savedChatsList.appendChild(item);
                     });
@@ -421,6 +530,7 @@
             function loadChat(chatId) {
                 const chatData = JSON.parse(localStorage.getItem(chatId));
                 if (!chatData) return;
+                
                 if (chatData.type === 'pdf_chat') {
                     pdfChatHistory = chatData.history;
                     currentPDFName = chatData.pdfName;
@@ -441,9 +551,12 @@
 
             function startNewChat() {
                 if (activeTab === 'pdf_chat') {
-                    pdfChatHistory = []; currentPDFName = null;
+                    pdfChatHistory = []; 
+                    currentPDFName = null;
                     sessionStorage.removeItem('currentPdfChatId');
-                    ui.chatContainer.innerHTML = ''; ui.pdfTitle.textContent = 'PDF Preview'; ui.pdfViewer.src = '';
+                    ui.chatContainer.innerHTML = ''; 
+                    ui.pdfTitle.textContent = 'PDF Preview'; 
+                    ui.pdfViewer.src = '';
                 } else {
                     aiChatHistory = [];
                     sessionStorage.removeItem('currentAIChatId');
@@ -455,18 +568,27 @@
             async function uploadPDF() {
                 const file = ui.pdfUploadInput.files[0];
                 if (!file) return;
+                
                 startNewChat();
                 currentPDFName = file.name;
                 ui.pdfTitle.textContent = currentPDFName;
                 ui.pdfViewer.src = URL.createObjectURL(file);
                 setUIState('processing', `Processing '${file.name}'...`);
                 addMessage(`Uploading and sending to worker...`, 'ai', 'pdf_chat');
+                
                 const formData = new FormData();
                 formData.append('file', file);
+                
                 try {
+                    console.log("📤 Uploading PDF to server...");
                     const response = await fetch(`/upload/${userId}`, { method: 'POST', body: formData });
-                    if (!response.ok) throw new Error((await response.json()).detail || 'Failed to start PDF processing.');
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to start PDF processing.');
+                    }
+                    console.log("✅ PDF uploaded successfully");
                 } catch (error) {
+                    console.error("❌ Upload error:", error);
                     addMessage(`Error: ${error.message}`, 'ai', 'pdf_chat');
                     setUIState('worker_ready', 'Upload failed.');
                 }
@@ -474,10 +596,17 @@
 
             function sendMessage() {
                 const question = ui.messageInput.value.trim();
-                if (!question) return;
+                if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
+                
+                console.log("📤 Sending PDF question:", question);
                 addMessage(question, 'user', 'pdf_chat');
+                
                 const historyForAI = pdfChatHistory.slice(0, -1);
-                socket.send(JSON.stringify({ type: 'ask', data: { question: question, history: historyForAI } }));
+                socket.send(JSON.stringify({ 
+                    type: 'ask', 
+                    data: { question: question, history: historyForAI } 
+                }));
+                
                 ui.messageInput.value = '';
                 setUIState('ai_thinking', 'AI is thinking...');
             }
@@ -485,11 +614,23 @@
             function sendMessageAIChat() {
                 const question = ui.messageInputAI.value.trim();
                 if ((!question && !uploadedImageB64) || !socket || socket.readyState !== WebSocket.OPEN) return;
+                
+                console.log("📤 Sending AI chat message:", question, "Has image:", !!uploadedImageB64);
                 addMessage(question, 'user', 'ai_chat', uploadedImageB64);
-                const historyForAI = aiChatHistory.slice(0,-1);
-                const payload = { question: question, history: historyForAI, image_b64: uploadedImageB64 };
+                
+                const historyForAI = aiChatHistory.slice(0, -1);
+                const payload = { 
+                    question: question, 
+                    history: historyForAI, 
+                    image_b64: uploadedImageB64 
+                };
                 const taskType = uploadedImageB64 ? 'general_chat_with_image' : 'general_chat';
-                socket.send(JSON.stringify({ type: taskType, data: payload }));
+                
+                socket.send(JSON.stringify({ 
+                    type: taskType, 
+                    data: payload 
+                }));
+                
                 ui.messageInputAI.value = '';
                 ui.imagePreviewContainerAI.style.display = 'none';
                 uploadedImageB64 = null;
@@ -498,6 +639,7 @@
 
             function handleImageFile(file) {
                 if (!file || !file.type.startsWith('image/')) return;
+                
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     uploadedImageB64 = event.target.result.split(',')[1];
@@ -507,25 +649,65 @@
                 reader.readAsDataURL(file);
             }
             
-            ui.tabChatPDF.addEventListener('click', () => { activeTab = 'pdf_chat'; ui.viewChatPDF.style.display = 'grid'; ui.viewAIChat.style.display = 'none'; ui.tabChatPDF.classList.add('active'); ui.tabAIChat.classList.remove('active'); });
-            ui.tabAIChat.addEventListener('click', () => { activeTab = 'ai_chat'; ui.viewChatPDF.style.display = 'none'; ui.viewAIChat.style.display = 'flex'; ui.tabChatPDF.classList.remove('active'); ui.tabAIChat.classList.add('active'); });
-            ui.openSidebarButton.addEventListener('click', () => { loadSavedChats(); ui.sidebar.classList.remove('-translate-x-full'); });
-            ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
-            ui.newChatButton.addEventListener('click', () => { startNewChat(); ui.sidebar.classList.add('-translate-x-full'); });
+            // Tab switching
+            ui.tabChatPDF.addEventListener('click', () => { 
+                activeTab = 'pdf_chat'; 
+                ui.viewChatPDF.style.display = 'grid'; 
+                ui.viewAIChat.style.display = 'none'; 
+                ui.tabChatPDF.classList.add('active'); 
+                ui.tabAIChat.classList.remove('active'); 
+            });
             
+            ui.tabAIChat.addEventListener('click', () => { 
+                activeTab = 'ai_chat'; 
+                ui.viewChatPDF.style.display = 'none'; 
+                ui.viewAIChat.style.display = 'flex'; 
+                ui.tabChatPDF.classList.remove('active'); 
+                ui.tabAIChat.classList.add('active'); 
+            });
+            
+            // Sidebar controls
+            ui.openSidebarButton.addEventListener('click', () => { 
+                loadSavedChats(); 
+                ui.sidebar.classList.remove('-translate-x-full'); 
+            });
+            
+            ui.closeSidebarButton.addEventListener('click', () => 
+                ui.sidebar.classList.add('-translate-x-full')
+            );
+            
+            ui.newChatButton.addEventListener('click', () => { 
+                startNewChat(); 
+                ui.sidebar.classList.add('-translate-x-full'); 
+            });
+            
+            // PDF chat controls
             ui.pdfUploadInput.addEventListener('change', uploadPDF);
             ui.sendButton.addEventListener('click', sendMessage);
-            ui.messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+            ui.messageInput.addEventListener('keydown', (e) => { 
+                if (e.key === 'Enter' && !e.shiftKey) { 
+                    e.preventDefault(); 
+                    sendMessage(); 
+                } 
+            });
             
+            // AI chat controls
             ui.sendButtonAI.addEventListener('click', sendMessageAIChat);
-            ui.messageInputAI.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessageAIChat(); } });
+            ui.messageInputAI.addEventListener('keydown', (e) => { 
+                if (e.key === 'Enter' && !e.shiftKey) { 
+                    e.preventDefault(); 
+                    sendMessageAIChat(); 
+                } 
+            });
             
             ui.imageUploadAI.addEventListener('change', (e) => handleImageFile(e.target.files[0]));
+            
             ui.removeImageButtonAI.addEventListener('click', () => {
                 uploadedImageB64 = null;
                 ui.imagePreviewContainerAI.style.display = 'none';
                 ui.imageUploadAI.value = '';
             });
+            
             ui.messageInputAI.addEventListener('paste', (e) => {
                 const items = (e.clipboardData || window.clipboardData).items;
                 for (const item of items) {
@@ -537,11 +719,9 @@
                     }
                 }
             });
-            
-            // Remove the manual save buttons as they are no longer needed
-            if(ui.saveChatButtonPDF) ui.saveChatButtonPDF.remove();
-            if(ui.saveChatButtonAI) ui.saveChatButtonAI.remove();
 
+            // Initialize
+            console.log("🚀 Initializing AI Toolkit with user ID:", userId);
             statusInterval = setInterval(checkWorkerStatus, 3000);
             checkWorkerStatus();
             ui.tabChatPDF.click();
