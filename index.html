@@ -238,11 +238,9 @@
                 socket.onclose = (event) => {
                     console.log("🔌 WebSocket disconnected. Code:", event.code, "Reason:", event.reason);
                     clearInterval(pingInterval);
-                    if (renderInterval) clearInterval(renderInterval);
-                    renderInterval = null;
-                    characterQueue = [];
-                    pdfStreamingBubble = null;
-                    aiChatStreamingBubble = null;
+                    
+                    // Clean up any ongoing streaming
+                    cleanupStreaming();
                     
                     setUIState('disconnected', 'Disconnected. Trying to reconnect...');
                     if (statusInterval) clearInterval(statusInterval);
@@ -343,9 +341,16 @@
                         break;
                         
                     case 'answer_end':
-                        console.log("✅ Answer complete, target:", message.target || currentStreamTarget);
-                        // Mark that streaming should finish
-                        // The render loop will handle cleanup when queue is empty
+                        console.log("✅ Answer end signal received, target:", message.target || currentStreamTarget);
+                        // Wait a bit to ensure all chunks are rendered, then force finalization
+                        setTimeout(() => {
+                            console.log("⏰ Finalizing stream after answer_end...");
+                            if (characterQueue.length === 0 && isStreaming) {
+                                // Force the render to complete
+                                const target = message.target || currentStreamTarget || 'pdf_chat';
+                                finalizeStream(target);
+                            }
+                        }, 100); // Wait 100ms for any remaining chunks to be processed
                         break;
                         
                     case 'error':
@@ -387,11 +392,11 @@
                 
                 // FIXED: Check if queue is empty and clean up
                 if (characterQueue.length === 0) {
-                    console.log("🏁 Render complete, cleaning up");
+                    console.log("🏁 Render complete, finalizing message");
                     clearInterval(renderInterval);
                     renderInterval = null;
                     
-                    if (streamingBubble) {
+                    if (streamingBubble && streamingBubble.textContent.trim().length > 0) {
                         // Convert markdown to HTML
                         const finalHTML = marked.parse(streamingBubble.textContent);
                         streamingBubble.innerHTML = finalHTML;
@@ -404,16 +409,26 @@
                             imageB64: null 
                         });
                         
+                        console.log("💾 Message added to history, length:", streamingBubble.textContent.length);
                         autosaveChat();
+                    } else {
+                        console.warn("⚠️ Streaming bubble was empty, not saving to history");
                     }
                     
-                    // FIXED: Clear the appropriate streaming bubble
+                    // FIXED: Clear the streaming state
                     if (isAIChat) {
                         aiChatStreamingBubble = null;
-                        setUIState('worker_ready', 'AI worker connected.');
                     } else {
                         pdfStreamingBubble = null;
+                    }
+                    
+                    isStreaming = false;
+                    currentStreamTarget = null;
+                    
+                    if (target === 'pdf_chat') {
                         setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    } else {
+                        setUIState('worker_ready', 'AI worker connected.');
                     }
                     
                     return;
@@ -631,6 +646,12 @@
                 const question = ui.messageInput.value.trim();
                 if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
                 
+                // Don't allow sending if already streaming
+                if (isStreaming && currentStreamTarget === 'pdf_chat') {
+                    console.log("⚠️ Already streaming, please wait...");
+                    return;
+                }
+                
                 console.log("📤 Sending PDF question:", question);
                 addMessage(question, 'user', 'pdf_chat');
                 
@@ -647,6 +668,12 @@
             function sendMessageAIChat() {
                 const question = ui.messageInputAI.value.trim();
                 if ((!question && !uploadedImageB64) || !socket || socket.readyState !== WebSocket.OPEN) return;
+                
+                // Don't allow sending if already streaming
+                if (isStreaming && currentStreamTarget === 'ai_chat') {
+                    console.log("⚠️ Already streaming, please wait...");
+                    return;
+                }
                 
                 console.log("📤 Sending AI chat message:", question, "Has image:", !!uploadedImageB64);
                 addMessage(question, 'user', 'ai_chat', uploadedImageB64);
