@@ -4,15 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Toolkit</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
+    <script src="[https://cdn.jsdelivr.net/npm/marked/marked.min.js](https://cdn.jsdelivr.net/npm/marked/marked.min.js)"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .chat-bubble { max-width: 90%; word-wrap: break-word; white-space: pre-wrap; }
         .user-bubble { background-color: #2563eb; color: white; }
         .ai-bubble { background-color: #334155; color: #f1f5f9; }
         
-        /* --- NEW STYLES FOR THOUGHTS BUBBLE --- */
+        /* --- STYLES FOR THOUGHTS BUBBLE --- */
         .thoughts-bubble { 
             background-color: #1e293b; 
             color: #94a3b8; 
@@ -23,11 +23,11 @@
             margin-bottom: 0.5rem;
         }
         .thoughts-bubble details > summary {
-            list-style: none; /* Hide default triangle */
+            list-style: none;
             padding: 0.25rem 0.5rem;
             cursor: pointer;
             outline: none;
-            color: #a5b4fc; /* Light blue/indigo */
+            color: #a5b4fc;
             font-weight: 600;
         }
         .thoughts-bubble details[open] > summary {
@@ -40,6 +40,74 @@
             border-radius: 0.375rem; 
             white-space: pre-wrap;
             overflow-x: auto;
+        }
+        
+        /* --- STYLES FOR SPEED BUTTON --- */
+        .speed-button {
+            background-color: #6366f1;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s, opacity 0.2s;
+            opacity: 0.8;
+            font-weight: 600;
+        }
+        .speed-button:hover {
+            opacity: 1;
+            background-color: #4f46e5;
+        }
+        .speed-button.fast-active {
+            background-color: #f59e0b;
+        }
+
+        /* --- STYLES FOR CODE BLOCK WITH LINE NUMBERS --- */
+        .code-block-container {
+            position: relative;
+            background-color: #0f172a;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        .code-block-container .language-tag {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: #475569;
+            color: #e2e8f0;
+            padding: 0.1rem 0.5rem;
+            font-size: 0.7rem;
+            border-top-left-radius: 0.5rem;
+            border-bottom-right-radius: 0.5rem;
+            z-index: 10;
+        }
+        .code-block-container ol {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            font-size: 0.9rem;
+        }
+        .line-numbers {
+            background-color: #1e293b;
+            color: #64748b;
+            text-align: right;
+            padding: 1rem 0.5rem;
+            user-select: none;
+            line-height: 1.5;
+        }
+        .code-content {
+            flex-grow: 1;
+            padding: 1rem;
+            overflow-x: auto;
+        }
+        .code-content code {
+            display: block;
+            white-space: pre;
+            color: #e2e8f0;
+            line-height: 1.5;
+            font-family: 'Courier New', Courier, monospace;
         }
         /* -------------------------------------- */
 
@@ -104,7 +172,7 @@
                 <div class="flex items-center space-x-4">
                     <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
 
-                        <svg xmlns="http://www.w3.org/2000/svg" 
+                        <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" 
                         class="h-6 w-6" fill="none" viewBox="0 0 24 24" 
                         stroke="currentColor"><path stroke-linecap="round" 
                         stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" 
@@ -145,6 +213,8 @@
                             id="upload-label" class="cursor-not-allowed bg-gray-500 text-white 
                             font-bold py-2 px-4 rounded-lg">📁 Upload</label>
                             <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
+                            
+                            <button id="fast-mode-button-pdf" class="speed-button">⚡ Fast Paste</button>
 
                             <input type="text" id="message-input" 
                             class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg
@@ -176,13 +246,15 @@
                             <label for="image-upload-ai" class="cursor-pointer text-slate-400 hover:text-white p-2">
 
                                 <svg 
-                                xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 
+                                xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="24" height="24" viewBox="0 0 
                                 24 24" fill="none" stroke="currentColor" stroke-width="2" 
                                 stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 
                                 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 
                                 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                             </label>
                             <input id="image-upload-ai" type="file" class="hidden" accept="image/jpeg,image/png">
+                            
+                            <button id="fast-mode-button-ai" class="speed-button">⚡ Fast Paste</button>
 
                             <input type="text" id="message-input-ai"
                             class="flex-1 bg-slate-700 border border-slate-600 text-white 
@@ -229,6 +301,10 @@
                 imagePreviewContainerAI: document.getElementById('image-preview-container-ai'),
                 imagePreviewAI: document.getElementById('image-preview-ai'),
                 removeImageButtonAI: document.getElementById('remove-image-button-ai'),
+                
+                // NEW BUTTON REFERENCES
+                fastModeButtonPdf: document.getElementById('fast-mode-button-pdf'),
+                fastModeButtonAi: document.getElementById('fast-mode-button-ai'),
             };
             
             let userId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
@@ -239,13 +315,16 @@
             let currentPDFName = null;
             let activeTab = 'pdf_chat';
             let uploadedImageB64 = null;
+            
+            // NEW GLOBAL STATE FOR FAST MODE
+            let fastMode = false; 
 
             let socket, statusInterval, pingInterval;
             
             // --- UPDATED STREAM STATE TO MANAGE THOUGHTS SEPARATELY ---
             let streamingState = {
-                pdf_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '' },
-                ai_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '' },
+                pdf_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
+                ai_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
                 // NEW: Stream state for thought process, including summary element
                 pdf_thoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' },
                 ai_thoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' }
@@ -256,6 +335,31 @@
             const RENDER_SPEED = 10; // milliseconds
             const CHARS_PER_TICK = 3;
             // -------------------------------------------------------------
+
+            // NEW FUNCTION: Renders code block HTML with line numbers
+            function renderCodeBlock(codeText) {
+                const lines = codeText.trim().split('\n');
+                const langMatch = lines[0].match(/```(\w+)/);
+                const language = langMatch ? langMatch[1] : '';
+                
+                // Remove the start and end triple backticks
+                const codeLines = lines.slice(1, lines.length - 1).join('\n');
+                
+                const codeHtml = codeLines.split('\n').map(line => `<code>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`).join('');
+                
+                const lineNumbers = codeLines.split('\n').map((_, index) => index + 1).join('\n');
+
+                return `
+                    <div class="code-block-container">
+                        ${language ? `<span class="language-tag">${language}</span>` : ''}
+                        <ol>
+                            <li class="line-numbers"><pre>${lineNumbers}</pre></li>
+                            <li class="code-content"><pre>${codeHtml}</pre></li>
+                        </ol>
+                        <button class="copy-button">Copy</button>
+                    </div>
+                `;
+            }
 
             function setUIState(state, message = "") {
                 ui.status.textContent = `Status: ${message}`;
@@ -361,14 +465,34 @@
             }
 
             function addCopyButtonsTo(containerElement) {
+                containerElement.querySelectorAll('.code-block-container').forEach(blockContainer => {
+                    if (blockContainer.querySelector('.copy-button.attached')) return;
+                    
+                    const codeElement = blockContainer.querySelector('.code-content code');
+                    if (!codeElement) return;
+
+                    const button = blockContainer.querySelector('.copy-button');
+                    button.classList.add('attached');
+
+                    button.addEventListener('click', () => {
+                        const code = codeElement.innerText;
+                        navigator.clipboard.writeText(code).then(() => {
+                            button.textContent = 'Copied!';
+                            setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+                        });
+                    });
+                });
+                
+                // Legacy support for non-code pre blocks (tables/old markdown)
                 containerElement.querySelectorAll('pre').forEach(block => {
-                    if (block.querySelector('.copy-button')) return;
+                    if (block.querySelector('.copy-button.attached')) return;
+                    if (block.closest('.code-block-container')) return; // Skip if it's the new container
+
                     const button = document.createElement('button');
-                    button.className = 'copy-button';
+                    button.className = 'copy-button attached';
                     button.textContent = 'Copy';
                     block.appendChild(button);
                     button.addEventListener('click', () => {
-                        // Extract code block content, preferring <code> content
                         const code = block.querySelector('code')?.innerText || block.innerText;
                         navigator.clipboard.writeText(code).then(() => {
                             button.textContent = 'Copied!';
@@ -380,13 +504,12 @@
             
             function addMessage(text, sender, target = 'pdf_chat', imageB64 = null) {
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
-                // Determine container based on whether it's PDF or AI Chat
                 const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
                 
-                // ADDED: Logic for the Thoughts bubble
+                // Logic for the Thoughts bubble
                 if (target.endsWith('_thoughts')) {
                     const bubble = document.createElement('div');
-                    bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto'); // Full width for thoughts
+                    bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto');
                     
                     const details = document.createElement('details');
                     details.classList.add('w-full');
@@ -395,7 +518,7 @@
                     summary.textContent = '...AI is thinking... (Click to view)';
                     
                     const contentDiv = document.createElement('div');
-                    contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1'); // Padding for content
+                    contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1');
                     
                     details.appendChild(summary);
                     details.appendChild(contentDiv);
@@ -404,7 +527,6 @@
                     container.appendChild(bubble);
                     container.scrollTop = container.scrollHeight;
                     
-                    // Return the elements needed for streaming into the thought bubble
                     return { bubble: bubble, contentDiv: contentDiv, summary: summary };
                 }
                 
@@ -431,27 +553,19 @@
                 container.appendChild(bubble);
                 container.scrollTop = container.scrollHeight;
                 
-                // Only add to history if it's a user message or a non-streaming AI message
                 if (sender === 'user' || (sender !== 'system' && text !== '' && !streamingState[target].active)) {
                     history.push({ sender, text: text, imageB64 });
                 }
                 
-                // Return the necessary elements for the main chat stream
                 return { bubble: bubble, contentDiv: textNode, summary: null };
             }
 
             function handleServerMessage(message) {
-                console.log("🔧 Handling message type:", message.type, "Target:", message.target);
-                
                 const targetKey = message.target || 'pdf_chat';
-
-                // Map thought targets to their main chat targets for UI state control
                 const mainTarget = targetKey.endsWith('_thoughts') ? targetKey.replace('_thoughts', '_chat') : targetKey;
 
                 switch (message.type) {
                     case 'status':
-                        console.log("📊 Status update:", message.data);
-                        // Using mainTarget here to ensure correct chat container is used
                         addMessage(message.data, 'ai', mainTarget);
                         if (message.data.includes("Ready for questions")) {
                             setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
@@ -459,41 +573,29 @@
                         break;
                         
                     case 'answer_chunk':
-                        console.log("📝 Chunk received for", targetKey, "length:", message.data.length);
-                        
                         if (!streamingState[targetKey].active) {
-                            console.log("🆕 Starting NEW stream for", targetKey);
-                            
                             // Initialize stream state
                             streamingState[targetKey].active = true;
                             streamingState[targetKey].ended = false;
                             streamingState[targetKey].textBuffer = ''; 
                             streamingState[targetKey].currentText = '';
+                            streamingState[targetKey].isCode = false; // Reset code state
 
                             if (targetKey.endsWith('_thoughts')) {
-                                // ADDED: Create the Thoughts dropdown first
                                 const thoughtElements = addMessage('', 'ai', targetKey);
                                 streamingState[targetKey].bubble = thoughtElements.bubble;
                                 streamingState[targetKey].contentDiv = thoughtElements.contentDiv;
                                 streamingState[targetKey].summary = thoughtElements.summary;
-                                
-                                // Mark the main stream as active too, since the whole response process is starting
                                 streamingState[mainTarget].active = true; 
                                 setUIState('ai_thinking', 'AI is thinking...'); 
                             } else {
-                                // If it's the main chat stream and it's starting, the thoughts stream *should* have already started.
-                                // If the thoughts stream isn't active, create the main chat bubble.
                                 if (!streamingState[mainTarget.replace('_chat', '_thoughts')].active) {
                                     const answerElements = addMessage('', 'ai', targetKey);
                                     streamingState[targetKey].bubble = answerElements.bubble;
                                     streamingState[targetKey].contentDiv = answerElements.contentDiv;
-                                } else {
-                                    // If thoughts are active, the main stream's bubble will be created when thoughts end.
-                                    // For now, we just proceed with buffering the answer chunk.
                                 }
                             }
                             
-                            // Start rendering loop if it's not already running
                             if (!renderInterval) { 
                                 renderInterval = setInterval(() => renderCharacters(), RENDER_SPEED); 
                             }
@@ -503,27 +605,19 @@
                         break;
                         
                     case 'answer_end':
-                        console.log("✅ Stream END for", targetKey);
                         streamingState[targetKey].ended = true;
                         
-                        // If the thoughts stream ends, update the summary text
                         if (targetKey.endsWith('_thoughts')) {
                              const state = streamingState[targetKey];
                              if (state.summary) {
                                 state.summary.textContent = 'View Thinking Process (Finished)';
                              }
                         }
-
-                        // Finalization logic lives in renderCharacters to ensure buffers are clear
                         break;
                         
                     case 'error':
-                        console.error("❌ Server error:", message.data);
                         addMessage(`Error: ${message.data}`, 'ai', mainTarget);
-                        // Call finalizeStream with error flag to reset UI state after an error
                         finalizeStream(mainTarget, true); 
-                        
-                        // Also forcibly clean up the thought stream if it existed
                         cleanupStreaming(mainTarget.replace('_chat', '_thoughts'));
                         break;
                         
@@ -536,17 +630,15 @@
             }
             
             function renderCharacters() { 
-                let allDone = true;
+                const renderSpeed = fastMode ? 999999 : CHARS_PER_TICK; // Use max number for instant paste
                 
                 for (let key in streamingState) {
                     const state = streamingState[key];
                     
                     if (state.active) {
-                        allDone = false; 
                         
                         // 1. Create Main Answer Bubble if Thoughts just finished
                         if (key.endsWith('_chat') && streamingState[key.replace('_chat', '_thoughts')].ended && !state.bubble) {
-                            console.log(`Creating main chat bubble for ${key} after thoughts end.`);
                             const answerElements = addMessage('', 'ai', key);
                             state.bubble = answerElements.bubble;
                             state.contentDiv = answerElements.contentDiv;
@@ -554,21 +646,47 @@
 
                         if (state.textBuffer.length > 0 || (state.ended && state.currentText.length > 0)) {
                             
-                            // Take a slice of the buffer and append to current text
-                            const charsToRender = Math.min(state.textBuffer.length, CHARS_PER_TICK);
+                            const charsToRender = Math.min(state.textBuffer.length, renderSpeed);
                             const chunk = state.textBuffer.substring(0, charsToRender);
                             state.currentText += chunk;
                             state.textBuffer = state.textBuffer.substring(charsToRender);
 
-                            // Only render if we have a contentDiv ready
                             if (state.contentDiv) {
                                 
                                 if (key.endsWith('_thoughts')) {
-                                    // For thoughts, marked.parse is fine for quick updates
                                     state.contentDiv.innerHTML = marked.parse(state.currentText);
                                 } else if (key.endsWith('_chat')) {
-                                    // For the main answer, render slowly into textContent until finalized
-                                    state.contentDiv.textContent = state.currentText;
+                                    
+                                    // NEW CODE RENDERING LOGIC
+                                    const text = state.currentText;
+                                    const codeMatch = text.match(/```(\w+)?\n?([\s\S]*?)```/);
+
+                                    if (codeMatch && !state.isCode) {
+                                        // Code block found, switch to HTML rendering mode
+                                        state.isCode = true;
+                                    } else if (!codeMatch && state.isCode) {
+                                         // If code block was previously active but now closed, reset state
+                                         state.isCode = false;
+                                    }
+                                    
+                                    if (state.isCode) {
+                                        // While in code block mode, use marked.parse for real-time update
+                                        // Then look for the code block and apply line numbering
+                                        const tempHtml = marked.parse(text);
+                                        state.contentDiv.innerHTML = tempHtml;
+                                        
+                                        const codeBlock = state.contentDiv.querySelector('pre');
+                                        if (codeBlock) {
+                                            const codeText = codeBlock.textContent;
+                                            const finalCodeHtml = renderCodeBlock(codeText);
+                                            // Replace the standard <pre> with the custom numbered one
+                                            codeBlock.outerHTML = finalCodeHtml;
+                                        }
+
+                                    } else {
+                                        // Standard text rendering
+                                        state.contentDiv.textContent = text;
+                                    }
                                 }
                                 
                                 const container = key.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
@@ -580,10 +698,8 @@
                         if (state.ended && state.textBuffer.length === 0) {
                             
                             if (key.endsWith('_thoughts')) {
-                                // Finalize thoughts first (which updates the summary and cleans up its state)
                                 finalizeStream(key);
                             } else if (key.endsWith('_chat')) {
-                                // Only finalize the main chat if the corresponding thoughts stream is also inactive/cleaned up
                                 const thoughtKey = key.replace('_chat', '_thoughts');
                                 if (!streamingState[thoughtKey].active) {
                                     finalizeStream(key);
@@ -602,13 +718,10 @@
             }
             
             function cleanupStreaming(target) {
-                // Determine the targets to clean
                 const targets = [target];
-                // If cleaning the main chat, make sure its thought stream is also cleaned up
                 if (target.endsWith('_chat')) {
                     targets.push(target.replace('_chat', '_thoughts'));
                 }
-                // If cleaning the thought stream, it should already be handled by the main chat cleanup
                 
                 targets.forEach(key => {
                     if (streamingState[key]) {
@@ -619,12 +732,12 @@
                             summary: null,
                             ended: false, 
                             textBuffer: '', 
-                            currentText: '' 
+                            currentText: '',
+                            isCode: false // Reset code flag on cleanup
                         };
                     }
                 });
 
-                // Stop render interval only if no streams are active globally
                 let anyActive = Object.values(streamingState).some(s => s.active);
                 if (!anyActive && renderInterval) {
                     clearInterval(renderInterval);
@@ -633,14 +746,11 @@
             }
             
             function finalizeStream(target, isError = false) {
-                console.log("🏁 Finalizing stream for", target);
-                
                 const state = streamingState[target];
                 if (!state.active) {
                     return;
                 }
 
-                // 1. Force render any remaining buffered text
                 if (state.textBuffer.length > 0) {
                     state.currentText += state.textBuffer;
                     state.textBuffer = '';
@@ -649,16 +759,25 @@
                 const text = state.currentText.trim(); 
                 
                 if (state.contentDiv) {
-                    // 2. Final conversion: ALWAYS marked.parse on final result
+                    // Final conversion for both normal text and code (the custom renderer handles code)
                     state.contentDiv.innerHTML = marked.parse(text);
+                    
+                    // Final pass to apply custom code formatting (must happen BEFORE addCopyButtonsTo)
+                    if (target.endsWith('_chat')) {
+                        state.contentDiv.querySelectorAll('pre').forEach(pre => {
+                            if (pre.querySelector('code')) {
+                                const codeText = pre.textContent;
+                                pre.outerHTML = renderCodeBlock(codeText);
+                            }
+                        });
+                    }
+                    
                     addCopyButtonsTo(state.contentDiv);
                     
-                    // If it's a thoughts bubble, the text is the full thought process. We don't save this to chat history.
                     if (target.endsWith('_thoughts') && state.summary) {
                          state.summary.textContent = 'View Thinking Process (Finished)';
                     }
                     
-                    // 3. Save to History (Only for the main chat answer)
                     if (target.endsWith('_chat') && !isError && text.length > 0) {
                         const history = target === 'ai_chat' ? aiChatHistory : pdfChatHistory;
                         history.push({ 
@@ -670,10 +789,8 @@
                     }
                 }
                 
-                // 4. Reset UI and cleanup state
                 cleanupStreaming(target);
 
-                // Only reset the main UI state if the primary answer stream is done
                 if (target.endsWith('_chat')) {
                     if (target === 'pdf_chat' && currentPDFName) {
                         setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
@@ -683,7 +800,37 @@
                 }
             } 
             
-            // --- STANDARD FUNCTIONS (left mostly untouched) ---
+            // --- NEW: Fast Mode Toggle Logic ---
+            function toggleFastMode(button) {
+                fastMode = !fastMode;
+                
+                [ui.fastModeButtonAi, ui.fastModeButtonPdf].forEach(btn => {
+                    if (fastMode) {
+                        btn.classList.add('fast-active');
+                        btn.textContent = '⚡ FAST MODE ACTIVE';
+                    } else {
+                        btn.classList.remove('fast-active');
+                        btn.textContent = '⚡ Fast Paste';
+                    }
+                });
+
+                // If fast mode is turned ON AND a stream is active, immediately trigger a render cycle to flush the buffer.
+                if (fastMode && Object.values(streamingState).some(s => s.active) && renderInterval) {
+                    // Temporarily run the loop quickly to flush the buffer
+                    clearInterval(renderInterval);
+                    renderInterval = setInterval(() => renderCharacters(), 1); // Max speed for one tick
+                } else if (!fastMode && Object.values(streamingState).some(s => s.active)) {
+                    // Restore original speed if a stream is active
+                    clearInterval(renderInterval);
+                    renderInterval = setInterval(() => renderCharacters(), RENDER_SPEED);
+                }
+            }
+
+            ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
+            ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
+            // --- END NEW LOGIC ---
+            
+            // --- STANDARD FUNCTIONS (loadSavedChats, loadChat, startNewChat, uploadPDF, sendMessage, etc.) ---
             
             function renderHistory(history, target = 'pdf_chat') {
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
@@ -704,7 +851,20 @@
                     } else {
                         bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
                         const textNode = document.createElement('div');
-                        textNode.innerHTML = marked.parse(msg.text);
+                        let finalHtml = marked.parse(msg.text);
+                        
+                        // Replace code blocks in history with custom numbered blocks
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = finalHtml;
+                        tempDiv.querySelectorAll('pre').forEach(pre => {
+                            if (pre.querySelector('code')) {
+                                const codeText = pre.textContent;
+                                pre.outerHTML = renderCodeBlock(codeText);
+                            }
+                        });
+                        finalHtml = tempDiv.innerHTML;
+                        
+                        textNode.innerHTML = finalHtml;
                         bubble.appendChild(textNode);
                         addCopyButtonsTo(bubble);
                     }
@@ -742,7 +902,6 @@
                 }; 
                 
                 localStorage.setItem(chatId, JSON.stringify(chatData)); 
-                console.log(`💾 Autosaved chat: ${chatName}`); 
             } 
             
             function loadSavedChats() { 
@@ -798,7 +957,6 @@
                     ui.pdfTitle.textContent = currentPDFName || 'PDF Preview'; 
                     ui.pdfViewer.src = ''; 
                     setUIState('worker_ready', `Loaded chat for '${currentPDFName}'. Re-upload file to continue.`); 
-                    // Add message directly to container to avoid adding to history
                     addMessage(`Please re-upload "${currentPDFName}" to continue this conversation.`, 'system', 'pdf_chat'); 
                 } else { 
                     aiChatHistory = chatData.history; 
@@ -840,15 +998,12 @@
                 formData.append('file', file); 
                 
                 try { 
-                    console.log("📤 Uploading PDF to server..."); 
                     const response = await fetch(`/upload/${userId}`, { method: 'POST', body: formData }); 
                     if (!response.ok) { 
                         const errorData = await response.json(); 
                         throw new Error(errorData.detail || 'Failed to start PDF processing.'); 
                     } 
-                    console.log("✅ PDF uploaded successfully"); 
                 } catch (error) { 
-                    console.error("❌ Upload error:", error); 
                     addMessage(`Error: ${error.message}`, 'ai', 'pdf_chat'); 
                     setUIState('worker_ready', 'Upload failed.'); 
                 } 
@@ -858,16 +1013,12 @@
                 const question = ui.messageInput.value.trim(); 
                 if (!question || !socket || socket.readyState !== WebSocket.OPEN) return; 
                 
-                // Re-check streaming state
                 if (streamingState.pdf_chat.active || streamingState.pdf_thoughts.active) { 
-                    console.log("⚠️ Already streaming, please wait..."); 
                     return; 
                 } 
                 
-                console.log("📤 Sending PDF question:", question); 
                 addMessage(question, 'user', 'pdf_chat'); 
                 
-                // Only send chat history that is already complete (i.e., not the user's latest message)
                 const historyForAI = pdfChatHistory.slice(0, -1); 
                 socket.send(JSON.stringify({ 
                     type: 'ask', 
@@ -883,13 +1034,10 @@
                 const question = ui.messageInputAI.value.trim(); 
                 if ((!question && !uploadedImageB64) || !socket || socket.readyState !== WebSocket.OPEN) return; 
                 
-                // Re-check streaming state
                 if (streamingState.ai_chat.active || streamingState.ai_thoughts.active) { 
-                    console.log("⚠️ Already streaming, please wait..."); 
                     return; 
                 } 
                 
-                console.log("📤 Sending AI chat message:", question, "Has image:", !!uploadedImageB64); 
                 addMessage(question, 'user', 'ai_chat', uploadedImageB64); 
                 
                 const historyForAI = aiChatHistory.slice(0, -1); 
@@ -924,7 +1072,7 @@
                 reader.readAsDataURL(file); 
             } 
             
-            // Tab switching 
+            // --- Event Listeners for UI ---
             ui.tabChatPDF.addEventListener('click', () => { 
                 activeTab = 'pdf_chat'; 
                 ui.viewChatPDF.style.display = 'grid'; 
@@ -941,7 +1089,6 @@
                 ui.tabAIChat.classList.add('active'); 
             }); 
             
-            // Sidebar controls 
             ui.openSidebarButton.addEventListener('click', () => { 
                 loadSavedChats(); 
                 ui.sidebar.classList.remove('-translate-x-full'); 
@@ -956,7 +1103,6 @@
                 ui.sidebar.classList.add('-translate-x-full'); 
             }); 
             
-            // PDF chat controls 
             ui.pdfUploadInput.addEventListener('change', uploadPDF); 
             ui.sendButton.addEventListener('click', sendMessage); 
             ui.messageInput.addEventListener('keydown', (e) => { 
@@ -966,7 +1112,6 @@
                 } 
             }); 
             
-            // AI chat controls 
             ui.sendButtonAI.addEventListener('click', sendMessageAIChat); 
             ui.messageInputAI.addEventListener('keydown', (e) => { 
                 if (e.key === 'Enter' && !e.shiftKey) { 
@@ -996,8 +1141,6 @@
             }); 
 
             // Initialize 
-            console.log("🚀 Initializing AI Toolkit with user ID:", userId); 
-            statusInterval = setInterval(checkWorkerStatus, 3000); 
             checkWorkerStatus(); 
             ui.tabChatPDF.click(); 
         }); 
