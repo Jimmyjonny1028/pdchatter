@@ -245,13 +245,17 @@
             }
 
             function handleServerMessage(message) {
-                let targetBubble, targetContainer;
+                let targetBubble, targetContainer, stateToSet, statusMsg;
                 if (message.target === 'ai_chat') {
                     targetBubble = aiChatStreamingBubble;
                     targetContainer = ui.chatContainerAI;
+                    stateToSet = 'worker_ready';
+                    statusMsg = 'AI worker connected.';
                 } else {
                     targetBubble = pdfStreamingBubble;
                     targetContainer = ui.chatContainer;
+                    stateToSet = 'ready_to_chat';
+                    statusMsg = `Ready: ${currentPDFName}`;
                 }
 
                 switch (message.type) {
@@ -262,21 +266,22 @@
                         }
                         break;
                     case 'answer_chunk':
+                        characterQueue.push(...message.data.split(''));
                         if (!targetBubble) {
                             targetBubble = addMessage('', 'ai', message.target);
                             if (message.target === 'ai_chat') aiChatStreamingBubble = targetBubble;
                             else pdfStreamingBubble = targetBubble;
                         }
-                        characterQueue.push(...message.data.split(''));
                         if (!renderInterval) {
                             renderInterval = setInterval(() => renderNextChunk(message.target), 15);
                         }
                         break;
                     case 'answer_end':
-                        // The render loop will now handle stopping, saving, and UI updates
+                        // Let the render loop finish and handle cleanup
                         break;
                     case 'error':
-                        addMessage(`Error: ${message.data}`, 'ai', activeTab);
+                        const target = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
+                        addMessage(`Error: ${message.data}`, 'ai', target);
                         setUIState('worker_ready', 'Error. Please try again.');
                         if (renderInterval) clearInterval(renderInterval);
                         renderInterval = null; characterQueue = []; currentStreamingBubble = null;
@@ -287,7 +292,6 @@
             function renderNextChunk(target) {
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
-
                 if (characterQueue.length === 0) {
                     clearInterval(renderInterval);
                     renderInterval = null;
@@ -295,12 +299,10 @@
                         const finalHTML = marked.parse(currentStreamingBubble.textContent);
                         currentStreamingBubble.innerHTML = finalHTML;
                         addCopyButtonsTo(currentStreamingBubble);
-                        
                         const lastMessage = history[history.length - 1];
                         if (lastMessage && lastMessage.sender === 'ai') {
                             lastMessage.text = currentStreamingBubble.textContent;
                         }
-                        
                         autosaveChat();
                     }
                     currentStreamingBubble = null;
@@ -308,7 +310,6 @@
                     else setUIState('worker_ready', 'AI worker connected.');
                     return;
                 }
-                
                 const batchSize = Math.max(1, Math.floor(characterQueue.length / 4));
                 const charsToRender = characterQueue.splice(0, batchSize).join('');
                 if (currentStreamingBubble) {
@@ -320,29 +321,26 @@
             function addMessage(text, sender, target = 'pdf_chat', imageB64 = null) {
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
-                
-                // Only push to history if it's not a system message and not an empty placeholder
-                if (sender !== 'system' && (text !== '' || sender === 'user')) {
-                    history.push({ sender, text, imageB64 });
-                }
-
                 const bubble = document.createElement('div');
                 bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
                 if (sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
                 else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
-                
                 const textNode = document.createElement('div');
                 textNode.textContent = text;
                 bubble.appendChild(textNode);
-                
                 if (sender === 'user' && imageB64) {
                     const img = document.createElement('img');
                     img.src = `data:image/jpeg;base64,${imageB64}`;
                     bubble.appendChild(img);
                 }
-                
                 container.appendChild(bubble);
                 container.scrollTop = container.scrollHeight;
+                if (sender !== 'system') {
+                    if (text !== '' || sender === 'user') {
+                        history.push({ sender, text, imageB64 });
+                    }
+                }
+                setUIState(ui.status.textContent.replace('Status: ', ''));
                 return bubble;
             }
 
@@ -538,10 +536,6 @@
                 }
             });
             
-            // Remove the manual save buttons as they are no longer needed
-            if(ui.saveChatButtonPDF) ui.saveChatButtonPDF.remove();
-            if(ui.saveChatButtonAI) ui.saveChatButtonAI.remove();
-
             statusInterval = setInterval(checkWorkerStatus, 3000);
             checkWorkerStatus();
             ui.tabChatPDF.click();
