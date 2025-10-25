@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Toolkit</title>
-    <script src="https://cdn.tailwindcss.com"></script> 
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -110,6 +110,29 @@
             font-family: 'Courier New', Courier, monospace;
         }
         /* -------------------------------------- */
+        
+        /* --- NEW STYLES FOR RETRY BUTTON --- */
+        .retry-button {
+            background-color: #dc2626; /* Red-600 */
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 1rem;
+            transition: background-color 0.2s;
+        }
+        .retry-button:hover {
+            background-color: #b91c1c; /* Red-700 */
+        }
+
+        #error-retry-container-pdf, 
+        #error-retry-container-ai {
+            display: flex;
+            justify-content: center;
+            padding: 1rem;
+        }
+        /* ----------------------------------- */
 
         #chat-sidebar { transition: transform 0.3s ease-in-out; }
         .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
@@ -172,7 +195,7 @@
                 <div class="flex items-center space-x-4">
                     <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
 
-                        <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" 
+                        <svg xmlns="http://www.w3.org/2000/svg" 
                         class="h-6 w-6" fill="none" viewBox="0 0 24 24" 
                         stroke="currentColor"><path stroke-linecap="round" 
                         stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" 
@@ -206,6 +229,7 @@
                 </section>
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden">
                     <main id="chat-container" class="flex-1 p-4 space-y-4 overflow-y-auto"></main>
+                    <div id="error-retry-container-pdf" class="bg-slate-800" style="display: none;"></div>
                     <footer class="bg-slate-900/50 p-4 border-t border-slate-700">
                         <div class="flex items-center space-x-4">
 
@@ -241,12 +265,13 @@
                             -mr-2">&times;</button>
                         </div>
                     </div>
+                    <div id="error-retry-container-ai" class="bg-slate-800" style="display: none;"></div>
                     <footer class="bg-slate-900/50 p-4 border-t border-slate-700">
                         <div class="flex items-center space-x-4">
                             <label for="image-upload-ai" class="cursor-pointer text-slate-400 hover:text-white p-2">
 
                                 <svg 
-                                xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="24" height="24" viewBox="0 0 
+                                xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 
                                 24 24" fill="none" stroke="currentColor" stroke-width="2" 
                                 stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 
                                 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 
@@ -302,9 +327,12 @@
                 imagePreviewAI: document.getElementById('image-preview-ai'),
                 removeImageButtonAI: document.getElementById('remove-image-button-ai'),
                 
-                // NEW BUTTON REFERENCES
                 fastModeButtonPdf: document.getElementById('fast-mode-button-pdf'),
                 fastModeButtonAi: document.getElementById('fast-mode-button-ai'),
+                
+                // NEW UI REFERENCES
+                errorRetryContainerPdf: document.getElementById('error-retry-container-pdf'),
+                errorRetryContainerAi: document.getElementById('error-retry-container-ai'),
             };
             
             let userId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
@@ -316,26 +344,25 @@
             let activeTab = 'pdf_chat';
             let uploadedImageB64 = null;
             
-            // NEW GLOBAL STATE FOR FAST MODE
             let fastMode = false; 
+            
+            // NEW GLOBAL STATE FOR RETRY
+            let lastUserMessageText = null; 
+            let lastUserMessageImageB64 = null; 
 
             let socket, statusInterval, pingInterval;
             
-            // --- UPDATED STREAM STATE TO MANAGE THOUGHTS SEPARATELY ---
             let streamingState = {
                 pdf_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
                 ai_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
-                // NEW: Stream state for thought process, including summary element
                 pdf_thoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' },
                 ai_thoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' }
             };
 
-            // Render at a smooth, constant interval for a fluid, human-like typing effect
             let renderInterval = null;
-            const RENDER_SPEED = 10; // milliseconds
+            const RENDER_SPEED = 10; 
             const CHARS_PER_TICK = 3;
-            // -------------------------------------------------------------
-
+            
             // NEW FUNCTION: Renders code block HTML with line numbers
             function renderCodeBlock(codeText) {
                 const lines = codeText.trim().split('\n');
@@ -343,9 +370,13 @@
                 const language = langMatch ? langMatch[1] : '';
                 
                 // Remove the start and end triple backticks
+                // Note: The logic here needs to be robust for streaming, so we use the full text and slice.
                 const codeLines = lines.slice(1, lines.length - 1).join('\n');
                 
-                const codeHtml = codeLines.split('\n').map(line => `<code>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`).join('');
+                // Escape HTML for safety and proper rendering
+                const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                const codeHtml = codeLines.split('\n').map(line => `<code>${escapeHtml(line)}</code>`).join('');
                 
                 const lineNumbers = codeLines.split('\n').map((_, index) => index + 1).join('\n');
 
@@ -373,7 +404,6 @@
                 ui.uploadLabel.classList.toggle('bg-blue-500', isWorkerReady);
                 ui.uploadLabel.classList.toggle('hover:bg-blue-600', isWorkerReady);
                 
-                // Disable inputs if a stream is active or we are waiting on a worker
                 const isPdfStreaming = streamingState.pdf_chat.active || streamingState.pdf_thoughts.active;
                 const isAiStreaming = streamingState.ai_chat.active || streamingState.ai_thoughts.active;
 
@@ -424,11 +454,9 @@
             function connectWebSocket() {
                 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
-                console.log('Connecting to WebSocket:', wsUrl);
                 socket = new WebSocket(wsUrl);
 
                 socket.onopen = () => {
-                    console.log("✅ WebSocket connected successfully");
                     if (pingInterval) clearInterval(pingInterval);
                     pingInterval = setInterval(() => {
                         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -438,7 +466,6 @@
                 };
 
                 socket.onmessage = (event) => {
-                    console.log("📨 Message received:", event.data);
                     try {
                         const message = JSON.parse(event.data);
                         handleServerMessage(message);
@@ -448,12 +475,8 @@
                 };
                 
                 socket.onclose = (event) => {
-                    console.log("🔌 WebSocket disconnected. Code:", event.code, "Reason:", event.reason);
                     clearInterval(pingInterval);
-                    
-                    // Clean up any ongoing streaming
                     cleanupStreaming();
-                    
                     setUIState('disconnected', 'Disconnected. Trying to reconnect...');
                     if (statusInterval) clearInterval(statusInterval);
                     statusInterval = setInterval(checkWorkerStatus, 3000);
@@ -506,7 +529,6 @@
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
                 
-                // Logic for the Thoughts bubble
                 if (target.endsWith('_thoughts')) {
                     const bubble = document.createElement('div');
                     bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto');
@@ -530,7 +552,6 @@
                     return { bubble: bubble, contentDiv: contentDiv, summary: summary };
                 }
                 
-                // Standard Chat Bubbles
                 const bubble = document.createElement('div');
                 bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
                 
@@ -559,6 +580,67 @@
                 
                 return { bubble: bubble, contentDiv: textNode, summary: null };
             }
+            
+            // NEW FUNCTION: Displays the retry button and clears old one
+            function showRetryButton(tab, errorMsg) {
+                const errorContainer = tab === 'pdf_chat' ? ui.errorRetryContainerPdf : ui.errorRetryContainerAi;
+                const targetChatContainer = tab === 'pdf_chat' ? ui.chatContainer : ui.chatContainerAI;
+                
+                // 1. Create and append the error bubble to the chat window
+                const errorBubble = document.createElement('div');
+                errorBubble.className = 'flex justify-start mb-4 px-4 w-full';
+                errorBubble.innerHTML = `<div class="chat-bubble bg-red-600 text-white p-3 rounded-lg ai-bubble">
+                    **🚨 ERROR**: The response failed. This often happens if the AI is processing for too long and the network times out. 
+                    <br>Error details: <i>${errorMsg}</i>
+                </div>`;
+                targetChatContainer.appendChild(errorBubble);
+                
+                // 2. Create and display the retry button container
+                errorContainer.style.display = 'flex';
+                errorContainer.innerHTML = `
+                    <button id="retry-button-${tab}" class="retry-button">
+                        ♻️ Retry Last Prompt
+                    </button>
+                `;
+
+                document.getElementById(`retry-button-${tab}`).onclick = () => retryLastMessage(tab);
+                
+                // 3. Scroll to the bottom
+                targetChatContainer.scrollTop = targetChatContainer.scrollHeight;
+            }
+
+            // NEW FUNCTION: Sends the last message again
+            function retryLastMessage(tab) {
+                if (!lastUserMessageText) return;
+
+                // Clear the retry container
+                ui.errorRetryContainerPdf.style.display = 'none';
+                ui.errorRetryContainerAi.style.display = 'none';
+                
+                // Determine if it was a PDF ask or an AI chat
+                if (tab === 'pdf_chat') {
+                    // Recreate a clean history for sending (last message will be added by sendMessage)
+                    const tempHistory = pdfChatHistory.slice(0, -1);
+                    
+                    // We must clear the last message from the history array before resending
+                    // to prevent duplication on the worker's side.
+                    pdfChatHistory.pop(); 
+                    
+                    // Call the full sender function again
+                    sendMessage(lastUserMessageText, 'pdf_chat', null, tempHistory);
+
+                } else if (tab === 'ai_chat') {
+                    // Recreate a clean history for sending
+                    const tempHistory = aiChatHistory.slice(0, -1);
+                    
+                    // We must clear the last message from the history array before resending
+                    aiChatHistory.pop();
+                    
+                    // Call the full sender function again, including the image B64
+                    sendMessage(lastUserMessageText, 'ai_chat', lastUserMessageImageB64, tempHistory);
+                }
+            }
+
 
             function handleServerMessage(message) {
                 const targetKey = message.target || 'pdf_chat';
@@ -579,7 +661,7 @@
                             streamingState[targetKey].ended = false;
                             streamingState[targetKey].textBuffer = ''; 
                             streamingState[targetKey].currentText = '';
-                            streamingState[targetKey].isCode = false; // Reset code state
+                            streamingState[targetKey].isCode = false;
 
                             if (targetKey.endsWith('_thoughts')) {
                                 const thoughtElements = addMessage('', 'ai', targetKey);
@@ -616,8 +698,9 @@
                         break;
                         
                     case 'error':
-                        addMessage(`Error: ${message.data}`, 'ai', mainTarget);
+                        // CRITICAL: Display the error message and the retry button
                         finalizeStream(mainTarget, true); 
+                        showRetryButton(mainTarget, message.data);
                         cleanupStreaming(mainTarget.replace('_chat', '_thoughts'));
                         break;
                         
@@ -630,14 +713,13 @@
             }
             
             function renderCharacters() { 
-                const renderSpeed = fastMode ? 999999 : CHARS_PER_TICK; // Use max number for instant paste
+                const renderSpeed = fastMode ? 999999 : CHARS_PER_TICK; 
                 
                 for (let key in streamingState) {
                     const state = streamingState[key];
                     
                     if (state.active) {
                         
-                        // 1. Create Main Answer Bubble if Thoughts just finished
                         if (key.endsWith('_chat') && streamingState[key.replace('_chat', '_thoughts')].ended && !state.bubble) {
                             const answerElements = addMessage('', 'ai', key);
                             state.bubble = answerElements.bubble;
@@ -657,30 +739,22 @@
                                     state.contentDiv.innerHTML = marked.parse(state.currentText);
                                 } else if (key.endsWith('_chat')) {
                                     
-                                    // NEW CODE RENDERING LOGIC
                                     const text = state.currentText;
-                                    const codeMatch = text.match(/```(\w+)?\n?([\s\S]*?)```/);
-
-                                    if (codeMatch && !state.isCode) {
-                                        // Code block found, switch to HTML rendering mode
+                                    
+                                    // Check for code block initiation (stream starts at ```)
+                                    if (!state.isCode && text.includes('```')) {
                                         state.isCode = true;
-                                    } else if (!codeMatch && state.isCode) {
-                                         // If code block was previously active but now closed, reset state
-                                         state.isCode = false;
                                     }
                                     
                                     if (state.isCode) {
                                         // While in code block mode, use marked.parse for real-time update
-                                        // Then look for the code block and apply line numbering
                                         const tempHtml = marked.parse(text);
                                         state.contentDiv.innerHTML = tempHtml;
                                         
                                         const codeBlock = state.contentDiv.querySelector('pre');
-                                        if (codeBlock) {
+                                        if (codeBlock && codeBlock.textContent.trim().startsWith('```')) {
                                             const codeText = codeBlock.textContent;
-                                            const finalCodeHtml = renderCodeBlock(codeText);
-                                            // Replace the standard <pre> with the custom numbered one
-                                            codeBlock.outerHTML = finalCodeHtml;
+                                            codeBlock.outerHTML = renderCodeBlock(codeText);
                                         }
 
                                     } else {
@@ -694,7 +768,6 @@
                             }
                         }
                         
-                        // 2. Finalization Check
                         if (state.ended && state.textBuffer.length === 0) {
                             
                             if (key.endsWith('_thoughts')) {
@@ -709,7 +782,6 @@
                     }
                 }
                 
-                // Final check to see if we can kill the interval
                 let anyActive = Object.values(streamingState).some(s => s.active);
                 if (!anyActive && renderInterval) {
                     clearInterval(renderInterval);
@@ -733,7 +805,7 @@
                             ended: false, 
                             textBuffer: '', 
                             currentText: '',
-                            isCode: false // Reset code flag on cleanup
+                            isCode: false 
                         };
                     }
                 });
@@ -759,10 +831,8 @@
                 const text = state.currentText.trim(); 
                 
                 if (state.contentDiv) {
-                    // Final conversion for both normal text and code (the custom renderer handles code)
                     state.contentDiv.innerHTML = marked.parse(text);
                     
-                    // Final pass to apply custom code formatting (must happen BEFORE addCopyButtonsTo)
                     if (target.endsWith('_chat')) {
                         state.contentDiv.querySelectorAll('pre').forEach(pre => {
                             if (pre.querySelector('code')) {
@@ -780,11 +850,16 @@
                     
                     if (target.endsWith('_chat') && !isError && text.length > 0) {
                         const history = target === 'ai_chat' ? aiChatHistory : pdfChatHistory;
-                        history.push({ 
-                            sender: 'ai', 
-                            text: text, 
-                            imageB64: null 
-                        });
+                        
+                        // Check for duplicate in history before pushing (crucial for resume/retry stability)
+                        const lastMsg = history[history.length - 1];
+                        if (!lastMsg || lastMsg.sender !== 'ai' || lastMsg.text !== text) {
+                            history.push({ 
+                                sender: 'ai', 
+                                text: text, 
+                                imageB64: null 
+                            });
+                        }
                         autosaveChat();
                     }
                 }
@@ -814,13 +889,10 @@
                     }
                 });
 
-                // If fast mode is turned ON AND a stream is active, immediately trigger a render cycle to flush the buffer.
                 if (fastMode && Object.values(streamingState).some(s => s.active) && renderInterval) {
-                    // Temporarily run the loop quickly to flush the buffer
                     clearInterval(renderInterval);
-                    renderInterval = setInterval(() => renderCharacters(), 1); // Max speed for one tick
+                    renderInterval = setInterval(() => renderCharacters(), 1); 
                 } else if (!fastMode && Object.values(streamingState).some(s => s.active)) {
-                    // Restore original speed if a stream is active
                     clearInterval(renderInterval);
                     renderInterval = setInterval(() => renderCharacters(), RENDER_SPEED);
                 }
@@ -830,7 +902,79 @@
             ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
             // --- END NEW LOGIC ---
             
-            // --- STANDARD FUNCTIONS (loadSavedChats, loadChat, startNewChat, uploadPDF, sendMessage, etc.) ---
+            // --- MODIFIED SEND FUNCTIONS ---
+            function sendMessage(question, tab, imageB64 = null, tempHistory = null) {
+                if (!question || !socket || socket.readyState !== WebSocket.OPEN) return; 
+                
+                if (streamingState.pdf_chat.active || streamingState.ai_chat.active) { 
+                    return; 
+                } 
+                
+                // 1. Store the message and image for potential retry (CRUCIAL)
+                lastUserMessageText = question;
+                lastUserMessageImageB64 = imageB64;
+                
+                const history = tempHistory || (tab === 'ai_chat' ? aiChatHistory : pdfChatHistory);
+                
+                // 2. Add the new message to the UI (and history, since tempHistory is null by default)
+                addMessage(question, 'user', tab, imageB64);
+                
+                // 3. Prepare the history to send to the worker (excluding the user's latest message if it was just added)
+                const historyForWorker = history.slice(0, -1);
+                
+                // 4. Send the data
+                if (tab === 'pdf_chat') {
+                    socket.send(JSON.stringify({ 
+                        type: 'ask', 
+                        target: 'pdf_chat',
+                        data: { question: question, history: historyForWorker } 
+                    })); 
+                } else {
+                    const payload = { 
+                        question: question, 
+                        history: historyForWorker, 
+                        image_b64: imageB64 
+                    }; 
+                    const taskType = imageB64 ? 'general_chat_with_image' : 'general_chat'; 
+                    
+                    socket.send(JSON.stringify({ 
+                        type: taskType, 
+                        target: 'ai_chat',
+                        data: payload 
+                    })); 
+                }
+                
+                // 5. Clean up and update status
+                ui.messageInput.value = ''; 
+                ui.messageInputAI.value = '';
+                ui.imagePreviewContainerAI.style.display = 'none';
+                ui.imageUploadAI.value = ''; // Clear file input
+                uploadedImageB64 = null; 
+                setUIState('ai_thinking', 'AI is thinking...'); 
+            }
+            
+            // Hook up UI buttons to the consolidated sendMessage function
+            ui.sendButton.addEventListener('click', () => {
+                sendMessage(ui.messageInput.value.trim(), 'pdf_chat');
+            });
+            ui.messageInput.addEventListener('keydown', (e) => { 
+                if (e.key === 'Enter' && !e.shiftKey) { 
+                    e.preventDefault(); 
+                    sendMessage(ui.messageInput.value.trim(), 'pdf_chat'); 
+                } 
+            });
+            ui.sendButtonAI.addEventListener('click', () => {
+                sendMessage(ui.messageInputAI.value.trim(), 'ai_chat', uploadedImageB64);
+            });
+            ui.messageInputAI.addEventListener('keydown', (e) => { 
+                if (e.key === 'Enter' && !e.shiftKey) { 
+                    e.preventDefault(); 
+                    sendMessage(ui.messageInputAI.value.trim(), 'ai_chat', uploadedImageB64); 
+                } 
+            });
+            // --- END MODIFIED SEND FUNCTIONS ---
+
+            // --- REST OF STANDARD FUNCTIONS ---
             
             function renderHistory(history, target = 'pdf_chat') {
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
@@ -853,7 +997,6 @@
                         const textNode = document.createElement('div');
                         let finalHtml = marked.parse(msg.text);
                         
-                        // Replace code blocks in history with custom numbered blocks
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = finalHtml;
                         tempDiv.querySelectorAll('pre').forEach(pre => {
@@ -1009,57 +1152,6 @@
                 } 
             } 
 
-            function sendMessage() { 
-                const question = ui.messageInput.value.trim(); 
-                if (!question || !socket || socket.readyState !== WebSocket.OPEN) return; 
-                
-                if (streamingState.pdf_chat.active || streamingState.pdf_thoughts.active) { 
-                    return; 
-                } 
-                
-                addMessage(question, 'user', 'pdf_chat'); 
-                
-                const historyForAI = pdfChatHistory.slice(0, -1); 
-                socket.send(JSON.stringify({ 
-                    type: 'ask', 
-                    target: 'pdf_chat',
-                    data: { question: question, history: historyForAI } 
-                })); 
-                
-                ui.messageInput.value = ''; 
-                setUIState('ai_thinking', 'AI is thinking...'); 
-            } 
-            
-            function sendMessageAIChat() { 
-                const question = ui.messageInputAI.value.trim(); 
-                if ((!question && !uploadedImageB64) || !socket || socket.readyState !== WebSocket.OPEN) return; 
-                
-                if (streamingState.ai_chat.active || streamingState.ai_thoughts.active) { 
-                    return; 
-                } 
-                
-                addMessage(question, 'user', 'ai_chat', uploadedImageB64); 
-                
-                const historyForAI = aiChatHistory.slice(0, -1); 
-                const payload = { 
-                    question: question, 
-                    history: historyForAI, 
-                    image_b64: uploadedImageB64 
-                }; 
-                const taskType = uploadedImageB64 ? 'general_chat_with_image' : 'general_chat'; 
-                
-                socket.send(JSON.stringify({ 
-                    type: taskType, 
-                    target: 'ai_chat',
-                    data: payload 
-                })); 
-                
-                ui.messageInputAI.value = ''; 
-                ui.imagePreviewContainerAI.style.display = 'none'; 
-                uploadedImageB64 = null; 
-                setUIState('ai_thinking', 'AI is thinking...'); 
-            } 
-
             function handleImageFile(file) { 
                 if (!file || !file.type.startsWith('image/')) return; 
                 
@@ -1104,21 +1196,6 @@
             }); 
             
             ui.pdfUploadInput.addEventListener('change', uploadPDF); 
-            ui.sendButton.addEventListener('click', sendMessage); 
-            ui.messageInput.addEventListener('keydown', (e) => { 
-                if (e.key === 'Enter' && !e.shiftKey) { 
-                    e.preventDefault(); 
-                    sendMessage(); 
-                } 
-            }); 
-            
-            ui.sendButtonAI.addEventListener('click', sendMessageAIChat); 
-            ui.messageInputAI.addEventListener('keydown', (e) => { 
-                if (e.key === 'Enter' && !e.shiftKey) { 
-                    e.preventDefault(); 
-                    sendMessageAIChat(); 
-                } 
-            }); 
             
             ui.imageUploadAI.addEventListener('change', (e) => handleImageFile(e.target.files[0])); 
             
