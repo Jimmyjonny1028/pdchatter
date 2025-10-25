@@ -277,7 +277,7 @@
                         }
                         break;
                     case 'answer_end':
-                        // Let the render loop finish and handle cleanup
+                        // The render loop will now handle stopping, saving, and UI updates
                         break;
                     case 'error':
                         const target = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
@@ -536,6 +536,10 @@
                 }
             });
             
+            // Remove the manual save buttons as they are no longer needed
+            if(ui.saveChatButtonPDF) ui.saveChatButtonPDF.remove();
+            if(ui.saveChatButtonAI) ui.saveChatButtonAI.remove();
+
             statusInterval = setInterval(checkWorkerStatus, 3000);
             checkWorkerStatus();
             ui.tabChatPDF.click();
