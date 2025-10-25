@@ -8,10 +8,16 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         .chat-bubble { max-width: 90%; word-wrap: break-word; white-space: pre-wrap; }
-        .user-bubble { background-color: #3b82f6; color: white; }
-        .ai-bubble { background-color: #e5e7eb; color: #1f2937; }
+        .user-bubble { background-color: #2563eb; color: white; }
+        .ai-bubble { background-color: #334155; color: #f1f5f9; }
         #chat-sidebar { transition: transform 0.3s ease-in-out; }
         .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
+        
+        /* Custom scrollbar for the dark mode chat container */
+        #chat-container::-webkit-scrollbar { width: 8px; }
+        #chat-container::-webkit-scrollbar-track { background: #1e293b; } /* Darker track */
+        #chat-container::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        #chat-container::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
 </head>
 <body class="bg-gray-100 h-screen overflow-hidden">
@@ -43,32 +49,31 @@
             </header>
 
             <div id="view-chatpdf" class="flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
-                <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden">
+                <section class="bg-white rounded-lg shadow-md flex flex-col h-full">
                     <div class="p-2 border-b bg-gray-50"><h2 id="pdf-title" class="text-lg font-bold text-gray-700 truncate">PDF Preview</h2></div>
                     <div class="flex-1 p-2"><embed id="pdf-viewer" src="" type="application/pdf" width="100%" height="100%"/></div>
                 </section>
-                <section class="flex flex-col h-full overflow-hidden">
-                    <div class="bg-white rounded-lg shadow-md flex flex-col flex-1">
-                        <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4"></main>
-                        <footer class="bg-white p-4 border-t">
-                            <div class="flex items-center space-x-4">
-                                <div>
-                                    <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-400 text-white font-bold py-2 px-4 rounded-lg">📁 Upload PDF</label>
-                                    <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
-                                </div>
-                                <input type="text" id="message-input" class="flex-1 border border-gray-300 rounded-lg p-2" placeholder="Please connect to worker..." disabled>
-                                <button id="send-button" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
-                                <button id="save-chat-button" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg opacity-50 cursor-not-allowed" disabled>Save</button>
+                
+                <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden">
+                    <main id="chat-container" class="flex-1 p-4 space-y-4 overflow-y-auto"></main>
+                    <footer class="bg-slate-900/50 p-4 border-t border-slate-700">
+                        <div class="flex items-center space-x-4">
+                            <div>
+                                <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">📁 Upload</label>
+                                <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
                             </div>
-                        </footer>
-                    </div>
+                            <input type="text" id="message-input" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400" placeholder="Please connect to worker..." disabled>
+                            <button id="send-button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg cursor-not-allowed" disabled>Send</button>
+                            <button id="save-chat-button" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg opacity-50 cursor-not-allowed" disabled>Save</button>
+                        </div>
+                    </footer>
                 </section>
             </div>
+            
             </div>
     </div>
 
     <script>
-        // --- UI ELEMENTS (Corrected) ---
         const ui = {
             chatContainer: document.getElementById('chat-container'),
             messageInput: document.getElementById('message-input'),
@@ -81,7 +86,7 @@
             sidebar: document.getElementById('chat-sidebar'),
             openSidebarButton: document.getElementById('open-sidebar-button'),
             closeSidebarButton: document.getElementById('close-sidebar-button'),
-            saveChatButton: document.getElementById('save-chat-button'), // THIS LINE WAS MISSING
+            saveChatButton: document.getElementById('save-chat-button'),
             savedChatsList: document.getElementById('saved-chats-list'),
             tabChatPDF: document.getElementById('tab-chatpdf'),
             tabWatermark: document.getElementById('tab-watermark'),
@@ -89,7 +94,6 @@
             viewWatermark: document.getElementById('view-watermark'),
         };
         
-        // --- APP STATE ---
         let currentPDFName = "";
         let currentChatHistory = [];
         let userId = localStorage.getItem('chatpdf_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
@@ -120,12 +124,12 @@
 
             if (isChatReady) {
                 ui.messageInput.placeholder = "Ask a question about the PDF...";
-                ui.sendButton.classList.remove('bg-gray-400');
-                ui.sendButton.classList.add('bg-green-500');
+                ui.sendButton.classList.remove('bg-gray-500', 'cursor-not-allowed');
+                ui.sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
             } else {
                 ui.messageInput.placeholder = message;
-                ui.sendButton.classList.add('bg-gray-400');
-                ui.sendButton.classList.remove('bg-green-500');
+                ui.sendButton.classList.add('bg-gray-500', 'cursor-not-allowed');
+                ui.sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
             }
         }
 
@@ -218,7 +222,7 @@
             ui.chatContainer.appendChild(bubble);
             ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
             
-            setUIState(ui.status.textContent.split(': ')[1]); // Refresh save button state
+            setUIState(ui.status.textContent.replace('Status: ', ''));
             return bubble;
         }
 
@@ -256,7 +260,7 @@
             ui.messageInput.value = '';
             setUIState('ai_thinking', 'AI is thinking...');
         }
-
+        
         // --- INITIALIZE ---
         ui.pdfUploadInput.addEventListener('change', uploadPDF);
         ui.sendButton.addEventListener('click', sendMessage);
@@ -264,10 +268,8 @@
             if (event.key === 'Enter' && !ui.messageInput.disabled) sendMessage();
         });
         
-        // ADDED: Event listener for the save button
         ui.saveChatButton.addEventListener('click', () => {
-            // Your logic for saving the chat can go here
-            alert('Save chat functionality not yet implemented.');
+            alert('Save chat functionality is not yet implemented.');
         });
         
         statusInterval = setInterval(checkWorkerStatus, 3000);
