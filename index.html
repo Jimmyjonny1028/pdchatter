@@ -18,35 +18,11 @@
         #chat-container::-webkit-scrollbar-track, #chat-container-ai::-webkit-scrollbar-track, #saved-chats-list::-webkit-scrollbar-track { background: #1e293b; }
         #chat-container::-webkit-scrollbar-thumb, #chat-container-ai::-webkit-scrollbar-thumb, #saved-chats-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         
-        /* Styles for code blocks and the copy button */
-        .ai-bubble pre {
-            background-color: #0f172a; /* Even darker blue */
-            color: #e2e8f0;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            overflow-x: auto;
-            position: relative;
-        }
-        .ai-bubble code {
-            font-family: 'Courier New', Courier, monospace;
-        }
-        .copy-button {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            background-color: #475569;
-            color: white;
-            border: none;
-            padding: 0.25rem 0.5rem;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            font-size: 0.8rem;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-        pre:hover .copy-button {
-            opacity: 1;
-        }
+        .ai-bubble pre { background-color: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; position: relative; }
+        .ai-bubble code { font-family: 'Courier New', Courier, monospace; }
+        .user-bubble img { max-width: 150px; border-radius: 0.5rem; margin-top: 0.5rem; }
+        .copy-button { position: absolute; top: 0.5rem; right: 0.5rem; background-color: #475569; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem; opacity: 0; transition: opacity 0.2s; }
+        pre:hover .copy-button { opacity: 1; }
     </style>
 </head>
 <body class="bg-gray-100 h-screen overflow-hidden">
@@ -102,8 +78,18 @@
             <div id="view-ai-chat" style="display: none;" class="flex-1 flex flex-col p-4 overflow-hidden">
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden">
                     <main id="chat-container-ai" class="flex-1 p-4 space-y-4 overflow-y-auto"></main>
+                    <div id="image-preview-container-ai" class="p-4 pt-0" style="display: none;">
+                        <div class="relative w-24 h-24">
+                            <img id="image-preview-ai" class="w-full h-full object-cover rounded-md">
+                            <button id="remove-image-button-ai" class="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center -mt-2 -mr-2">&times;</button>
+                        </div>
+                    </div>
                     <footer class="bg-slate-900/50 p-4 border-t border-slate-700">
                         <div class="flex items-center space-x-4">
+                            <label for="image-upload-ai" class="cursor-pointer text-slate-400 hover:text-white p-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                            </label>
+                            <input id="image-upload-ai" type="file" class="hidden" accept="image/jpeg,image/png">
                             <input type="text" id="message-input-ai" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2" placeholder="Please connect to worker..." disabled>
                             <button id="send-button-ai" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
                             <button id="save-chat-button-ai" class="bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg opacity-50 cursor-not-allowed" disabled>Save</button>
@@ -143,6 +129,10 @@
                 messageInputAI: document.getElementById('message-input-ai'),
                 sendButtonAI: document.getElementById('send-button-ai'),
                 saveChatButtonAI: document.getElementById('save-chat-button-ai'),
+                imageUploadAI: document.getElementById('image-upload-ai'),
+                imagePreviewContainerAI: document.getElementById('image-preview-container-ai'),
+                imagePreviewAI: document.getElementById('image-preview-ai'),
+                removeImageButtonAI: document.getElementById('remove-image-button-ai'),
             };
             
             let userId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
@@ -152,6 +142,7 @@
             let aiChatHistory = [];
             let currentPDFName = null;
             let activeTab = 'pdf_chat';
+            let uploadedImageB64 = null;
 
             let pdfStreamingBubble = null;
             let aiChatStreamingBubble = null;
@@ -167,7 +158,6 @@
                 ui.uploadLabel.classList.toggle('bg-blue-500', isWorkerReady);
                 ui.messageInput.disabled = !isChatReady;
                 ui.sendButton.disabled = !isChatReady;
-
                 ui.messageInputAI.disabled = !isWorkerReady;
                 ui.sendButtonAI.disabled = !isWorkerReady;
 
@@ -183,22 +173,18 @@
 
                 if (isChatReady) {
                     ui.messageInput.placeholder = "Ask a question about the PDF...";
-                    ui.sendButton.classList.remove('bg-gray-500');
-                    ui.sendButton.classList.add('bg-green-500');
+                    ui.sendButton.classList.remove('bg-gray-500'); ui.sendButton.classList.add('bg-green-500');
                 } else {
                     ui.messageInput.placeholder = message;
-                    ui.sendButton.classList.add('bg-gray-500');
-                    ui.sendButton.classList.remove('bg-green-500');
+                    ui.sendButton.classList.add('bg-gray-500'); ui.sendButton.classList.remove('bg-green-500');
                 }
 
                 if (isWorkerReady) {
-                    ui.messageInputAI.placeholder = "Send a message to the AI...";
-                    ui.sendButtonAI.classList.remove('bg-gray-500');
-                    ui.sendButtonAI.classList.add('bg-green-500');
+                    ui.messageInputAI.placeholder = "Send a message, or attach an image...";
+                    ui.sendButtonAI.classList.remove('bg-gray-500'); ui.sendButtonAI.classList.add('bg-green-500');
                 } else {
                     ui.messageInputAI.placeholder = message;
-                    ui.sendButtonAI.classList.add('bg-gray-500');
-                    ui.sendButtonAI.classList.remove('bg-green-500');
+                    ui.sendButtonAI.classList.add('bg-gray-500'); ui.sendButtonAI.classList.remove('bg-green-500');
                 }
             }
 
@@ -208,7 +194,7 @@
                     if (!response.ok) throw new Error("Server not reachable");
                     const data = await response.json();
                     if (data.worker_connected) {
-                        setUIState('worker_ready', 'AI worker connected. Ready to upload.');
+                        setUIState('worker_ready', 'AI worker connected.');
                         clearInterval(statusInterval);
                         connectWebSocket();
                     } else {
@@ -224,7 +210,7 @@
                 const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
                 socket = new WebSocket(wsUrl);
                 socket.onopen = () => {
-                    console.log("WebSocket connected successfully.");
+                    console.log("WebSocket connected.");
                     if (pingInterval) clearInterval(pingInterval);
                     pingInterval = setInterval(() => {
                         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -251,9 +237,8 @@
             }
 
             function addCopyButtonsTo(containerElement) {
-                const codeBlocks = containerElement.querySelectorAll('pre');
-                codeBlocks.forEach(block => {
-                    if (block.querySelector('.copy-button')) return; // Don't add a button if one already exists
+                containerElement.querySelectorAll('pre').forEach(block => {
+                    if (block.querySelector('.copy-button')) return;
                     const button = document.createElement('button');
                     button.className = 'copy-button';
                     button.textContent = 'Copy';
@@ -310,7 +295,7 @@
                         setUIState(stateToSet, statusMsg);
                         break;
                     case 'error':
-                        const target = pdfStreamingBubble ? 'pdf_chat' : 'ai_chat';
+                        const target = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
                         addMessage(`Error: ${message.data}`, 'ai', target);
                         setUIState('worker_ready', 'Error. Please try again.');
                         pdfStreamingBubble = null;
@@ -319,17 +304,26 @@
                 }
             }
 
-            function addMessage(text, sender, target = 'pdf_chat') {
+            function addMessage(text, sender, target = 'pdf_chat', imageB64 = null) {
                 const history = (target === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
-                history.push({ sender, text });
+                history.push({ sender, text, imageB64 });
                 
                 const bubble = document.createElement('div');
                 bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
                 if (sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
                 else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
                 
-                bubble.textContent = text;
+                const textNode = document.createElement('div');
+                textNode.textContent = text;
+                bubble.appendChild(textNode);
+                
+                if (sender === 'user' && imageB64) {
+                    const img = document.createElement('img');
+                    img.src = `data:image/jpeg;base64,${imageB64}`;
+                    bubble.appendChild(img);
+                }
+                
                 container.appendChild(bubble);
                 container.scrollTop = container.scrollHeight;
                 
@@ -343,10 +337,21 @@
                 history.forEach(msg => {
                     const bubble = document.createElement('div');
                     bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
-                    if (msg.sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
-                    else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
-                    bubble.innerHTML = marked.parse(msg.text);
-                    addCopyButtonsTo(bubble);
+                    if (msg.sender === 'user') {
+                        bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+                        const textNode = document.createElement('div');
+                        textNode.textContent = msg.text;
+                        bubble.appendChild(textNode);
+                        if (msg.imageB64) {
+                            const img = document.createElement('img');
+                            img.src = `data:image/jpeg;base64,${msg.imageB64}`;
+                            bubble.appendChild(img);
+                        }
+                    } else {
+                        bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                        bubble.innerHTML = marked.parse(msg.text);
+                        addCopyButtonsTo(bubble);
+                    }
                     container.appendChild(bubble);
                 });
                 container.scrollTop = container.scrollHeight;
@@ -355,19 +360,10 @@
             function saveChat() {
                 const historyToSave = (activeTab === 'ai_chat') ? aiChatHistory : pdfChatHistory;
                 if (historyToSave.length === 0) return;
-
                 const firstUserMessage = historyToSave.find(m => m.sender === 'user')?.text || 'New Chat';
-                const chatName = (activeTab === 'pdf_chat' && currentPDFName) 
-                    ? `${currentPDFName.replace('.pdf', '')}` 
-                    : firstUserMessage.substring(0, 30);
-                
+                const chatName = (activeTab === 'pdf_chat' && currentPDFName) ? `${currentPDFName.replace('.pdf', '')}` : firstUserMessage.substring(0, 30);
                 const chatId = `chat_${Date.now()}`;
-                const chatData = {
-                    id: chatId, name: chatName, type: activeTab,
-                    timestamp: new Date().toISOString(), history: historyToSave,
-                    pdfName: (activeTab === 'pdf_chat') ? currentPDFName : null,
-                };
-
+                const chatData = { id: chatId, name: chatName, type: activeTab, timestamp: new Date().toISOString(), history: historyToSave, pdfName: (activeTab === 'pdf_chat') ? currentPDFName : null };
                 localStorage.setItem(chatId, JSON.stringify(chatData));
                 addMessage('Chat saved!', 'system', activeTab);
                 loadSavedChats();
@@ -440,7 +436,7 @@
             async function uploadPDF() {
                 const file = ui.pdfUploadInput.files[0];
                 if (!file) return;
-                startNewChat(); // Start a new chat session on new upload
+                startNewChat();
                 currentPDFName = file.name;
                 ui.pdfTitle.textContent = currentPDFName;
                 ui.pdfViewer.src = URL.createObjectURL(file);
@@ -459,56 +455,55 @@
 
             function sendMessage() {
                 const question = ui.messageInput.value.trim();
-                if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
+                if (!question) return;
                 addMessage(question, 'user', 'pdf_chat');
-                socket.send(JSON.stringify({ type: 'ask', data: question }));
+                socket.send(JSON.stringify({ type: 'ask', data: { question: question, history: pdfChatHistory.slice(0, -1) } }));
                 ui.messageInput.value = '';
                 setUIState('ai_thinking', 'AI is thinking...');
             }
             
             function sendMessageAIChat() {
                 const question = ui.messageInputAI.value.trim();
-                if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
-                addMessage(question, 'user', 'ai_chat');
-                socket.send(JSON.stringify({ type: 'general_chat', data: question }));
+                if ((!question && !uploadedImageB64) || !socket || socket.readyState !== WebSocket.OPEN) return;
+                addMessage(question, 'user', 'ai_chat', uploadedImageB64);
+                const payload = { question: question, history: aiChatHistory.slice(0, -1), image_b64: uploadedImageB64 };
+                const taskType = uploadedImageB64 ? 'general_chat_with_image' : 'general_chat';
+                socket.send(JSON.stringify({ type: taskType, data: payload }));
                 ui.messageInputAI.value = '';
+                ui.imagePreviewContainerAI.style.display = 'none';
+                uploadedImageB64 = null;
                 setUIState('ai_thinking', 'AI is thinking...');
             }
-
-            ui.tabChatPDF.addEventListener('click', () => {
-                activeTab = 'pdf_chat';
-                ui.viewChatPDF.style.display = 'grid';
-                ui.viewAIChat.style.display = 'none';
-                ui.tabChatPDF.classList.add('active');
-                ui.tabAIChat.classList.remove('active');
-            });
-            ui.tabAIChat.addEventListener('click', () => {
-                activeTab = 'ai_chat';
-                ui.viewChatPDF.style.display = 'none';
-                ui.viewAIChat.style.display = 'flex';
-                ui.tabChatPDF.classList.remove('active');
-                ui.tabAIChat.classList.add('active');
-            });
-
-            ui.openSidebarButton.addEventListener('click', () => {
-                loadSavedChats();
-                ui.sidebar.classList.remove('-translate-x-full');
-            });
-            ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
-            ui.newChatButton.addEventListener('click', () => {
-                startNewChat();
-                ui.sidebar.classList.add('-translate-x-full');
-            });
             
+            ui.tabChatPDF.addEventListener('click', () => { activeTab = 'pdf_chat'; ui.viewChatPDF.style.display = 'grid'; ui.viewAIChat.style.display = 'none'; ui.tabChatPDF.classList.add('active'); ui.tabAIChat.classList.remove('active'); });
+            ui.tabAIChat.addEventListener('click', () => { activeTab = 'ai_chat'; ui.viewChatPDF.style.display = 'none'; ui.viewAIChat.style.display = 'flex'; ui.tabChatPDF.classList.remove('active'); ui.tabAIChat.classList.add('active'); });
+            ui.openSidebarButton.addEventListener('click', () => { loadSavedChats(); ui.sidebar.classList.remove('-translate-x-full'); });
+            ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
+            ui.newChatButton.addEventListener('click', () => { startNewChat(); ui.sidebar.classList.add('-translate-x-full'); });
             ui.pdfUploadInput.addEventListener('change', uploadPDF);
             ui.sendButton.addEventListener('click', sendMessage);
-            ui.messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !ui.messageInput.disabled) sendMessage(); });
+            ui.messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
             ui.saveChatButtonPDF.addEventListener('click', saveChat);
-            
             ui.sendButtonAI.addEventListener('click', sendMessageAIChat);
-            ui.messageInputAI.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !ui.messageInputAI.disabled) sendMessageAIChat(); });
+            ui.messageInputAI.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessageAIChat(); } });
             ui.saveChatButtonAI.addEventListener('click', saveChat);
-            
+            ui.imageUploadAI.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    uploadedImageB64 = event.target.result.split(',')[1];
+                    ui.imagePreviewAI.src = event.target.result;
+                    ui.imagePreviewContainerAI.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            });
+            ui.removeImageButtonAI.addEventListener('click', () => {
+                uploadedImageB64 = null;
+                ui.imagePreviewContainerAI.style.display = 'none';
+                ui.imageUploadAI.value = '';
+            });
+
             statusInterval = setInterval(checkWorkerStatus, 3000);
             checkWorkerStatus();
             ui.tabChatPDF.click();
