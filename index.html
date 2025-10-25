@@ -103,6 +103,9 @@
         let socket;
         let statusInterval;
         let pingInterval;
+        
+        let characterQueue = [];
+        let isRendering = false;
 
         function setUIState(state, message = "") {
             ui.status.textContent = `Status: ${message}`;
@@ -120,7 +123,6 @@
             ui.saveChatButton.disabled = !canSave;
             ui.saveChatButton.classList.toggle('opacity-50', !canSave);
             ui.saveChatButton.classList.toggle('cursor-not-allowed', !canSave);
-
 
             if (isChatReady) {
                 ui.messageInput.placeholder = "Ask a question about the PDF...";
@@ -165,7 +167,6 @@
             };
 
             socket.onmessage = (event) => {
-                console.log("Received WebSocket message:", event.data);
                 handleServerMessage(JSON.parse(event.data));
             };
 
@@ -190,21 +191,42 @@
                     }
                     break;
                 case 'answer_chunk':
+                    for (const char of message.data) {
+                        characterQueue.push(char);
+                    }
                     if (!currentStreamingBubble) {
                         currentStreamingBubble = addMessage('', 'ai');
+                        if (!isRendering) {
+                            isRendering = true;
+                            requestAnimationFrame(renderLoop);
+                        }
                     }
-                    currentStreamingBubble.textContent += message.data;
-                    ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
                     break;
                 case 'answer_end':
-                    currentStreamingBubble = null; 
+                    isRendering = false; 
+                    currentStreamingBubble = null;
                     setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                     break;
                 case 'error':
                     addMessage(`Error: ${message.data}`, 'ai');
                     setUIState('worker_ready', 'Error. Please try again.');
+                    isRendering = false;
                     currentStreamingBubble = null;
                     break;
+            }
+        }
+        
+        function renderLoop() {
+            const charsToRenderCount = Math.min(characterQueue.length, 2);
+            if (charsToRenderCount > 0) {
+                const chars = characterQueue.splice(0, charsToRenderCount).join('');
+                if (currentStreamingBubble) {
+                    currentStreamingBubble.textContent += chars;
+                    ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
+                }
+            }
+            if (isRendering || characterQueue.length > 0) {
+                requestAnimationFrame(renderLoop);
             }
         }
 
