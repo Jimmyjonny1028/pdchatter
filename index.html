@@ -83,7 +83,7 @@
         let statusInterval;
         let pingInterval;
         let characterQueue = [];
-        let isRendering = false;
+        let renderInterval = null; // MODIFIED: Use setInterval instead of animation frames
 
         function setUIState(state, message = "") {
             ui.status.textContent = `Status: ${message}`;
@@ -109,6 +109,7 @@
         }
 
         async function checkWorkerStatus() {
+            // This function is fine, no changes needed
             try {
                 const response = await fetch(`/status`);
                 const data = await response.json();
@@ -125,12 +126,13 @@
         }
 
         function connectWebSocket() {
+            // This function is fine, no changes needed
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
-                console.log("WebSocket connected successfully.");
+                console.log("WebSocket connected.");
                 if (pingInterval) clearInterval(pingInterval);
                 pingInterval = setInterval(() => {
                     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -144,25 +146,24 @@
                     const message = JSON.parse(event.data);
                     handleServerMessage(message);
                 } catch (error) {
-                    console.error("Failed to parse or handle message:", error);
+                    console.error("Failed to handle message:", error);
                 }
             };
 
-            socket.onclose = (event) => {
-                console.log("WebSocket disconnected. Code:", event.code, "Reason:", event.reason);
+            socket.onclose = () => {
+                console.log("WebSocket disconnected.");
                 clearInterval(pingInterval);
+                if (renderInterval) clearInterval(renderInterval); // Clean up render interval on disconnect
                 setUIState('disconnected', 'Disconnected. Trying to reconnect...');
-                // Clear any old interval and start a new one to ensure reconnection happens
-                if(statusInterval) clearInterval(statusInterval);
-                statusInterval = setInterval(checkWorkerStatus, 3000);
+                if (!statusInterval) {
+                    statusInterval = setInterval(checkWorkerStatus, 3000);
+                }
             };
             
-            socket.onerror = (error) => {
-                console.error("WebSocket Error:", error);
-                // The onclose event will fire after an error, so we let it handle the reconnection.
-            };
+            socket.onerror = (error) => console.error("WebSocket Error:", error);
         }
         
+        // --- MODIFIED: More efficient and stable rendering logic ---
         function handleServerMessage(message) {
             switch (message.type) {
                 case 'status':
@@ -177,41 +178,49 @@
                     }
                     if (!currentStreamingBubble) {
                         currentStreamingBubble = addMessage('', 'ai');
-                        if (!isRendering) {
-                            isRendering = true;
-                            requestAnimationFrame(renderLoop);
-                        }
+                    }
+                    // Start the rendering interval if it's not already running
+                    if (!renderInterval) {
+                        renderInterval = setInterval(renderNextChunk, 30); // Render every 30ms
                     }
                     break;
                 case 'answer_end':
-                    isRendering = false; 
-                    currentStreamingBubble = null;
-                    setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                    // Don't stop rendering immediately. The loop will stop itself when the queue is empty.
                     break;
                 case 'error':
                     addMessage(`Error: ${message.data}`, 'ai');
                     setUIState('worker_ready', 'Error. Please try again.');
-                    isRendering = false;
+                    // Force stop rendering on error
+                    if (renderInterval) clearInterval(renderInterval);
+                    renderInterval = null;
+                    characterQueue = [];
                     currentStreamingBubble = null;
                     break;
             }
         }
         
-        function renderLoop() {
-            const charsToRenderCount = Math.min(characterQueue.length, 2);
-            if (charsToRenderCount > 0) {
-                const chars = characterQueue.splice(0, charsToRenderCount).join('');
-                if (currentStreamingBubble) {
-                    currentStreamingBubble.textContent += chars;
-                    ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
-                }
+        function renderNextChunk() {
+            if (characterQueue.length === 0) {
+                // If queue is empty, stop the interval and reset
+                clearInterval(renderInterval);
+                renderInterval = null;
+                currentStreamingBubble = null;
+                setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                return;
             }
-            if (isRendering || characterQueue.length > 0) {
-                requestAnimationFrame(renderLoop);
+            
+            // Pull a batch of characters from the queue to render
+            const batchSize = Math.max(1, Math.floor(characterQueue.length / 4)); // Render a fraction of the queue for smoothness
+            const charsToRender = characterQueue.splice(0, batchSize).join('');
+            
+            if (currentStreamingBubble) {
+                currentStreamingBubble.textContent += charsToRender;
+                ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
             }
         }
 
         function addMessage(text, sender) {
+            // This function is fine, no changes needed
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
             if (sender === 'user') {
@@ -226,16 +235,15 @@
         }
 
         async function uploadPDF() {
+            // This function is fine, no changes needed
             const file = ui.pdfUploadInput.files[0];
             if (!file) return;
-
             ui.chatContainer.innerHTML = '';
             currentPDFName = file.name;
             ui.pdfTitle.textContent = currentPDFName;
             ui.pdfViewer.src = URL.createObjectURL(file);
             setUIState('processing', `Processing '${file.name}'...`);
             addMessage(`Uploading and sending to worker...`, 'ai');
-            
             const formData = new FormData();
             formData.append('file', file);
             try {
@@ -251,6 +259,7 @@
         }
 
         function sendMessage() {
+            // This function is fine, no changes needed
             const question = ui.messageInput.value.trim();
             if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
             addMessage(question, 'user');
@@ -259,13 +268,13 @@
             setUIState('ai_thinking', 'AI is thinking...');
         }
         
+        // --- INITIALIZE ---
         ui.pdfUploadInput.addEventListener('change', uploadPDF);
         ui.sendButton.addEventListener('click', sendMessage);
         ui.messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !ui.messageInput.disabled) sendMessage();
         });
         
-        // Initial setup
         statusInterval = setInterval(checkWorkerStatus, 3000);
         checkWorkerStatus();
     </script>
