@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        .chat-bubble { max-width: 90%; word-wrap: break-word; }
+        .chat-bubble { max-width: 90%; word-wrap: break-word; white-space: pre-wrap; }
         .user-bubble { background-color: #3b82f6; color: white; }
         .ai-bubble { background-color: #e5e7eb; color: #1f2937; }
         #chat-sidebar { transition: transform 0.3s ease-in-out; }
@@ -22,7 +22,6 @@
 <body class="bg-gray-100 h-screen overflow-hidden">
 
     <div class="flex h-full">
-        <!-- Chat History Sidebar -->
         <aside id="chat-sidebar" class="w-64 bg-slate-800 text-white flex flex-col p-4 transform -translate-x-full fixed h-full z-20">
             <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
                 <h2 class="text-xl font-bold">Saved Chats</h2>
@@ -31,7 +30,6 @@
             <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2"></div>
         </aside>
 
-        <!-- Main Content Area -->
         <div class="flex-1 flex flex-col h-full">
              <header class="bg-white shadow-md p-4 flex items-center justify-between">
                 <div class="flex items-center space-x-4">
@@ -49,7 +47,6 @@
                 </div>
             </header>
 
-            <!-- ChatPDF View -->
             <div id="view-chatpdf" class="flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
                 <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden">
                     <div class="p-2 border-b bg-gray-50"><h2 id="pdf-title" class="text-lg font-bold text-gray-700 truncate">PDF Preview</h2></div>
@@ -73,7 +70,6 @@
                 </section>
             </div>
 
-            <!-- Watermark Remover View (Hidden by default) -->
             <div id="view-watermark" class="hidden flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
                  <section class="bg-white rounded-lg shadow-md flex flex-col h-full overflow-hidden items-center justify-center p-4">
                     <h2 class="text-lg font-bold text-gray-700 mb-2">1. Upload & Paint Over Watermark</h2>
@@ -101,7 +97,6 @@
     </div>
 
     <script>
-        // --- UI ELEMENTS ---
         const ui = {
             chatContainer: document.getElementById('chat-container'),
             messageInput: document.getElementById('message-input'),
@@ -122,71 +117,17 @@
             viewWatermark: document.getElementById('view-watermark'),
             wmImageUpload: document.getElementById('wm-image-upload'),
             wmRemoveButton: document.getElementById('wm-remove-button'),
-            wmOriginalPreview: document.getElementById('wm-original-preview'),
             wmResultPreview: document.getElementById('wm-result-preview'),
             canvas: document.getElementById('paint-canvas'),
             canvasContainer: document.getElementById('canvas-container'),
         };
         
-        // --- APP STATE ---
         let currentPDFName = "";
         let currentChatHistory = [];
-        let userId = localStorage.getItem('chatpdf_user_id');
-        if (!userId) {
-            userId = 'user_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('chatpdf_user_id', userId);
-        }
-        let uploadedImage = null;
-        const SERVER_URL = window.location.origin;
-        let isPainting = false;
-        let originalImageForInpainting = null;
-
-        // --- CANVAS SETUP ---
-        const ctx = ui.canvas.getContext('2d');
+        let userId = localStorage.getItem('chatpdf_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('chatpdf_user_id', userId);
         
-        function resizeCanvas(image) {
-            const ratio = image.width / image.height;
-            const containerWidth = ui.canvasContainer.clientWidth;
-            const containerHeight = ui.canvasContainer.clientHeight;
-            let newWidth = containerWidth;
-            let newHeight = newWidth / ratio;
-            if (newHeight > containerHeight) {
-                newHeight = containerHeight;
-                newWidth = newHeight * ratio;
-            }
-            ui.canvas.width = newWidth;
-            ui.canvas.height = newHeight;
-            ctx.drawImage(image, 0, 0, newWidth, newHeight);
-        }
-
-        function getMousePos(e) {
-            const rect = ui.canvas.getBoundingClientRect();
-            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        }
-
-        ui.canvas.addEventListener('mousedown', (e) => {
-            if (!originalImageForInpainting) return;
-            isPainting = true;
-            const pos = getMousePos(e);
-            ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y);
-        });
-
-        ui.canvas.addEventListener('mousemove', (e) => {
-            if (!isPainting) return;
-            const pos = getMousePos(e);
-            ctx.lineWidth = document.getElementById('brush-size').value;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = 'white';
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-        });
-
-        window.addEventListener('mouseup', () => { isPainting = false; });
-        
-        // --- WEBSOCKET & STATUS POLLING ---
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
+        let currentStreamingBubble = null;
         let socket;
         let statusInterval;
 
@@ -220,7 +161,7 @@
 
         async function checkWorkerStatus() {
             try {
-                const response = await fetch(`${SERVER_URL}/status`);
+                const response = await fetch(`/status`);
                 const data = await response.json();
                 if (data.worker_connected) {
                     setUIState('worker_ready', 'AI worker connected. Ready to upload.');
@@ -230,28 +171,38 @@
                     setUIState('waiting_for_worker', 'Waiting for local AI worker...');
                 }
             } catch (error) {
-                console.error("Status check failed:", error);
                 setUIState('error', 'Could not connect to server.');
             }
         }
 
         function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
             socket = new WebSocket(wsUrl);
+
             socket.onopen = () => {
-                console.log("WebSocket connected.");
+                console.log("WebSocket connected successfully.");
                 socket.send(JSON.stringify({ type: 'list_chats' }));
             };
-            socket.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
+
+            socket.onmessage = (event) => {
+                console.log("Received WebSocket message:", event.data);
+                handleServerMessage(JSON.parse(event.data));
+            };
+
             socket.onclose = () => {
-                setUIState('disconnected', 'Disconnected. Restarting status check...');
+                console.log("WebSocket disconnected. Re-checking status...");
+                setUIState('disconnected', 'Disconnected. Trying to reconnect...');
                 statusInterval = setInterval(checkWorkerStatus, 3000);
             };
+            
             socket.onerror = (error) => {
                 console.error("WebSocket Error:", error);
                 socket.close();
             };
         }
-
+        
+        // --- THIS IS THE CORRECTED FUNCTION ---
         function handleServerMessage(message) {
             switch (message.type) {
                 case 'status':
@@ -260,102 +211,67 @@
                         setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                     }
                     break;
-                case 'answer':
-                    addMessage(message.data, 'ai');
+                case 'answer_chunk':
+                    // If there's no bubble we're currently streaming to, create one.
+                    if (!currentStreamingBubble) {
+                        currentStreamingBubble = addMessage('', 'ai');
+                    }
+                    // Append the new piece of text to the bubble.
+                    currentStreamingBubble.textContent += message.data;
+                    ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
+                    break;
+                case 'answer_end':
+                    // The stream is finished. Reset the streaming bubble and re-enable input.
+                    currentStreamingBubble = null; 
                     setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                     break;
                 case 'error':
                     addMessage(`Error: ${message.data}`, 'ai');
                     setUIState('worker_ready', 'Error. Please try again.');
+                    // Also reset the streaming bubble in case the error happened mid-stream
+                    currentStreamingBubble = null;
                     break;
-                case 'chat_list':
-                    renderChatList(message.data);
-                    break;
-                case 'load_chat':
-                    const { history, pdf_data, pdf_name } = message.data;
-                    currentPDFName = pdf_name;
-                    ui.pdfTitle.textContent = currentPDFName;
-                    const byteCharacters = atob(pdf_data);
-                    const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
-                    const byteArray = new Uint8Array(byteNumbers);
-                    const blob = new Blob([byteArray], {type: 'application/pdf'});
-                    ui.pdfViewer.src = URL.createObjectURL(blob);
-                    renderChatHistory(history);
-                    setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
-                    break;
-                case 'watermark_removed':
-                    ui.wmResultPreview.src = `data:image/png;base64,${message.data}`;
-                    ui.status.textContent = 'Status: Watermark removed successfully!';
-                    ui.wmRemoveButton.disabled = false;
-                    ui.wmRemoveButton.textContent = 'Remove Watermark';
-                    break;
+                // --- Other cases like chat_list, load_chat, watermark_removed ---
+                // (Your existing code for these is fine)
             }
         }
 
         function addMessage(text, sender) {
-            if (ui.viewChatPDF.classList.contains('hidden') && sender !== 'system') return;
             currentChatHistory.push({ sender, text });
             ui.saveChatButton.disabled = currentChatHistory.length === 0;
+
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
-            if (sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
-            else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+            if (sender === 'user') {
+                bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+            } else {
+                bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+            }
             bubble.textContent = text;
             ui.chatContainer.appendChild(bubble);
             ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
-        }
-        
-        function renderChatList(chatNames) {
-            ui.savedChatsList.innerHTML = '';
-            if (chatNames.length === 0) {
-                ui.savedChatsList.innerHTML = '<p class="text-slate-400">No saved chats yet.</p>';
-                return;
-            }
-            chatNames.forEach(name => {
-                const item = document.createElement('div');
-                item.classList.add('p-2', 'bg-slate-700', 'rounded-md', 'cursor-pointer', 'hover:bg-slate-600', 'truncate');
-                item.textContent = name;
-                item.onclick = () => {
-                    socket.send(JSON.stringify({ type: 'load_chat', data: name }));
-                    ui.sidebar.classList.add('-translate-x-full');
-                };
-                ui.savedChatsList.appendChild(item);
-            });
-        }
-        
-        function renderChatHistory(history) {
-            ui.chatContainer.innerHTML = '';
-            currentChatHistory = history;
-            history.forEach(msg => {
-                const bubble = document.createElement('div');
-                bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
-                if (msg.sender === 'user') bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
-                else bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
-                bubble.textContent = msg.text;
-                ui.chatContainer.appendChild(bubble);
-            });
-            ui.chatContainer.scrollTop = ui.chatContainer.scrollHeight;
+            return bubble; // Return the new element so we can update it
         }
 
         async function uploadPDF() {
             const file = ui.pdfUploadInput.files[0];
             if (!file) return;
+
             ui.chatContainer.innerHTML = '';
             currentChatHistory = [];
             currentPDFName = file.name;
             ui.pdfTitle.textContent = currentPDFName;
             ui.pdfViewer.src = URL.createObjectURL(file);
             setUIState('processing', `Processing '${file.name}'...`);
-            addMessage(`Uploading ${file.name}...`, 'ai');
+            addMessage(`Uploading and sending to worker...`, 'ai');
             
             const formData = new FormData();
             formData.append('file', file);
             try {
                 const response = await fetch(`/upload/${userId}`, { method: 'POST', body: formData });
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.detail || 'Failed to process PDF.');
-                addMessage(result.message, 'ai');
+                if (!response.ok) throw new Error(result.detail || 'Failed to start PDF processing.');
+                // We no longer add a success message here, we wait for the worker's status message
             } catch (error) {
                 addMessage(`Error: ${error.message}`, 'ai');
                 setUIState('worker_ready', 'Upload failed. Please try again.');
@@ -364,98 +280,25 @@
 
         function sendMessage() {
             const question = ui.messageInput.value.trim();
-            if (!question) return;
+            if (!question || !socket || socket.readyState !== WebSocket.OPEN) return;
+
             addMessage(question, 'user');
             socket.send(JSON.stringify({ type: 'ask', data: question }));
             ui.messageInput.value = '';
             setUIState('ai_thinking', 'AI is thinking...');
         }
-        
-        function saveChat() {
-            const chatName = currentPDFName || 'Chat';
-            const timestamp = new Date().toLocaleString();
-            const key = `chat_${Date.now()}`;
-            localStorage.setItem(key, JSON.stringify({ name: `${chatName} - ${timestamp}`, history: currentChatHistory, pdfName: currentPDFName }));
-            addMessage('Chat saved to your browser\'s local storage.', 'ai');
-            loadSavedChats();
-        }
 
-        async function removeWatermark() {
-            if (!originalImageForInpainting) {
-                alert("Please upload an image first.");
-                return;
-            }
-            setUIState('ai_thinking', 'Removing watermark...');
-            ui.wmRemoveButton.disabled = true;
-            ui.wmRemoveButton.textContent = 'Processing...';
-
-            // Create the mask from the canvas, scaled to the original image dimensions
-            const maskCanvas = document.createElement('canvas');
-            maskCanvas.width = originalImageForInpainting.width;
-            maskCanvas.height = originalImageForInpainting.height;
-            const maskCtx = maskCanvas.getContext('2d');
-            // Draw a black background for the mask
-            maskCtx.fillStyle = 'black';
-            maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-            // Draw the white painted strokes, scaled to the original image size
-            maskCtx.drawImage(ui.canvas, 0, 0, originalImageForInpainting.width, originalImageForInpainting.height);
-            
-            const maskBlob = await new Promise(resolve => maskCanvas.toBlob(resolve, 'image/png'));
-
-            const formData = new FormData();
-            formData.append('image', uploadedImage);
-            formData.append('mask', maskBlob, 'mask.png');
-
-            try {
-                const response = await fetch(`/remove_watermark_manual/${userId}`, { method: 'POST', body: formData });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.detail || 'Failed to process image.');
-                // The result will be handled by the WebSocket message
-            } catch (error) {
-                addMessage(`Error: ${error.message}`, 'system');
-                setUIState('worker_ready', 'Error removing watermark.');
-            }
-        }
+        // --- All other functions (saveChat, removeWatermark, canvas logic, etc.) ---
+        // (Your existing code for these is fine)
 
         // --- INITIALIZE ---
-        ui.openSidebarButton.addEventListener('click', () => {
-            socket.send(JSON.stringify({ type: 'list_chats' }));
-            ui.sidebar.classList.remove('-translate-x-full');
-        });
-        ui.closeSidebarButton.addEventListener('click', () => ui.sidebar.classList.add('-translate-x-full'));
         ui.pdfUploadInput.addEventListener('change', uploadPDF);
         ui.sendButton.addEventListener('click', sendMessage);
-        ui.saveChatButton.addEventListener('click', saveChat);
         ui.messageInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') sendMessage();
+            if (event.key === 'Enter' && !ui.messageInput.disabled) {
+                sendMessage();
+            }
         });
-        ui.tabChatPDF.addEventListener('click', () => {
-            ui.viewChatPDF.classList.remove('hidden');
-            ui.viewWatermark.classList.add('hidden');
-            ui.tabChatPDF.classList.add('active');
-            ui.tabWatermark.classList.remove('active');
-        });
-        ui.tabWatermark.addEventListener('click', () => {
-            ui.viewChatPDF.classList.add('hidden');
-            ui.viewWatermark.classList.remove('hidden');
-            ui.tabChatPDF.classList.remove('active');
-            ui.tabWatermark.classList.add('active');
-        });
-        ui.wmImageUpload.addEventListener('change', (e) => {
-            uploadedImage = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    originalImageForInpainting = img;
-                    resizeCanvas(img);
-                    ui.wmRemoveButton.disabled = false;
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(uploadedImage);
-        });
-        ui.wmRemoveButton.addEventListener('click', removeWatermark);
         
         statusInterval = setInterval(checkWorkerStatus, 3000);
         checkWorkerStatus();
