@@ -199,6 +199,7 @@
                 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
                 socket = new WebSocket(wsUrl);
+
                 socket.onopen = () => {
                     console.log("WebSocket connected.");
                     if (pingInterval) clearInterval(pingInterval);
@@ -206,8 +207,9 @@
                         if (socket && socket.readyState === WebSocket.OPEN) {
                             socket.send(JSON.stringify({ type: 'ping' }));
                         }
-                    }, 20000);
+                    }, 20000); // Send a ping every 20 seconds
                 };
+
                 socket.onmessage = (event) => {
                     try {
                         const message = JSON.parse(event.data);
@@ -277,7 +279,7 @@
                         }
                         break;
                     case 'answer_end':
-                        // The render loop will now handle stopping, saving, and UI updates
+                        // Let the render loop finish and handle cleanup
                         break;
                     case 'error':
                         const target = pdfStreamingBubble ? 'pdf_chat' : (aiChatStreamingBubble ? 'ai_chat' : activeTab);
