@@ -178,15 +178,9 @@
         flex flex-col p-4 transform -translate-x-full fixed h-full z-20">
             <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
                 <h2 id="sidebar-title" class="text-xl font-bold">Saved Chats</h2>
-
-                <button id="close-sidebar-button" 
-                class="text-slate-400 hover:text-white 
-                text-2xl">&times;</button>
+                <button id="close-sidebar-button" class="text-slate-400 hover:text-white text-2xl">&times;</button>
             </div>
-
-            <button id="new-chat-button" class="w-full text-left p-2
-            mb-2 bg-indigo-500 rounded-md hover:bg-indigo-600">＋ New 
-            Chat</button>
+            <button id="new-chat-button" class="w-full text-left p-2 mb-2 bg-indigo-500 rounded-md hover:bg-indigo-600">＋ New Chat</button>
             <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2"></div>
         </aside>
 
@@ -194,12 +188,7 @@
             <header class="bg-white shadow-md p-4 flex items-center justify-between z-10">
                 <div class="flex items-center space-x-4">
                     <button id="open-sidebar-button" class="p-2 rounded-md hover:bg-gray-200">
-
-                        <svg xmlns="http://www.w3.org/2000/svg" 
-                        class="h-6 w-6" fill="none" viewBox="0 0 24 24" 
-                        stroke="currentColor"><path stroke-linecap="round" 
-                        stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" 
-                        /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
                     </button>
                     <div>
                         <h1 class="text-2xl font-bold text-gray-800">AI Toolkit</h1>
@@ -207,46 +196,26 @@
                     </div>
                 </div>
                 <div>
-
-                    <button id="tab-chatpdf" class="tab-button py-2 
-                    px-4 text-gray-500 font-semibold border-b-2">ChatPDF</button>
-
-                    <button id="tab-ai-chat" class="tab-button py-2 
-                    px-4 text-gray-500 font-semibold border-b-2">AI Chat</button>
+                    <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">ChatPDF</button>
+                    <button id="tab-ai-chat" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">AI Chat</button>
                 </div>
             </header>
 
             <div id="view-chatpdf" class="flex-1 grid grid-cols-2 gap-4 p-4 overflow-hidden">
                 <section class="bg-white rounded-lg shadow-md flex flex-col h-full">
-
-                    <div class="p-2 border-b bg-gray-50"><h2 
-                    id="pdf-title" class="text-lg font-bold text-gray-700 truncate">PDF 
-                    Preview</h2></div>
-
-                    <div class="flex-1 p-2"><embed 
-                    id="pdf-viewer" src="" type="application/pdf" width="100%" 
-                    height="100%"/></div>
+                    <div class="p-2 border-b bg-gray-50"><h2 id="pdf-title" class="text-lg font-bold text-gray-700 truncate">PDF Preview</h2></div>
+                    <div class="flex-1 p-2"><embed id="pdf-viewer" src="" type="application/pdf" width="100%" height="100%"/></div>
                 </section>
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden">
                     <main id="chat-container" class="flex-1 p-4 space-y-4 overflow-y-auto"></main>
                     <div id="error-retry-container-pdf" class="bg-slate-800" style="display: none;"></div>
                     <footer class="bg-slate-900/50 p-4 border-t border-slate-700">
                         <div class="flex items-center space-x-4">
-
-                            <label for="pdf-upload" 
-                            id="upload-label" class="cursor-not-allowed bg-gray-500 text-white 
-                            font-bold py-2 px-4 rounded-lg">📁 Upload</label>
+                            <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">📁 Upload</label>
                             <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
-                            
                             <button id="fast-mode-button-pdf" class="speed-button">⚡ Fast Paste</button>
-
-                            <input type="text" id="message-input" 
-                            class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg
-                            p-2" placeholder="Please connect to worker..." disabled>
-
-                            <button id="send-button" 
-                            class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" 
-                            disabled>Send</button>
+                            <input type="text" id="message-input" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2" placeholder="Please connect to worker..." disabled>
+                            <button id="send-button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
                         </div>
                     </footer>
                 </section>
@@ -258,36 +227,19 @@
                     <div id="image-preview-container-ai" class="p-4 pt-0" style="display: none;">
                         <div class="relative w-24 h-24">
                             <img id="image-preview-ai" class="w-full h-full object-cover rounded-md">
-
-                            <button id="remove-image-button-ai" 
-                            class="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6
-                            flex items-center justify-center -mt-2 
-                            -mr-2">&times;</button>
+                            <button id="remove-image-button-ai" class="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center -mt-2 -mr-2">&times;</button>
                         </div>
                     </div>
                     <div id="error-retry-container-ai" class="bg-slate-800" style="display: none;"></div>
                     <footer class="bg-slate-900/50 p-4 border-t border-slate-700">
                         <div class="flex items-center space-x-4">
                             <label for="image-upload-ai" class="cursor-pointer text-slate-400 hover:text-white p-2">
-
-                                <svg 
-                                xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 
-                                24 24" fill="none" stroke="currentColor" stroke-width="2" 
-                                stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 
-                                11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 
-                                9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                             </label>
                             <input id="image-upload-ai" type="file" class="hidden" accept="image/jpeg,image/png">
-                            
                             <button id="fast-mode-button-ai" class="speed-button">⚡ Fast Paste</button>
-
-                            <input type="text" id="message-input-ai"
-                            class="flex-1 bg-slate-700 border border-slate-600 text-white 
-                            rounded-lg p-2" placeholder="Please connect to worker..." disabled>
-
-                            <button id="send-button-ai" 
-                            class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" 
-                            disabled>Send</button>
+                            <input type="text" id="message-input-ai" class="flex-1 bg-slate-700 border border-slate-600 text-white rounded-lg p-2" placeholder="Please connect to worker..." disabled>
+                            <button id="send-button-ai" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg" disabled>Send</button>
                         </div>
                     </footer>
                 </section>
@@ -348,6 +300,9 @@
             // GLOBAL STATE FOR RETRY (CRUCIAL)
             let lastUserMessageText = null; 
             let lastUserMessageImageB64 = null; 
+            
+            // ADDED: Define your secret token here (must match the worker)
+            const WORKER_SECRET_TOKEN = "your_super_secret_token_12345";
 
             let socket, statusInterval, pingInterval;
             
@@ -435,7 +390,7 @@
                     if (!response.ok) throw new Error("Server not reachable");
                     const data = await response.json();
                     if (data.worker_connected) {
-                        setUIState('worker_ready', 'AI worker connected.');
+                        setUIState('worker_ready', 'AI worker connected. Authenticating...'); // Update status
                         clearInterval(statusInterval);
                         connectWebSocket();
                     } else {
@@ -453,6 +408,11 @@
                 socket = new WebSocket(wsUrl);
 
                 socket.onopen = () => {
+                    console.log("WebSocket connected. Sending auth token...");
+                    // --- SEND AUTH TOKEN ---
+                    socket.send(JSON.stringify({ type: 'auth', token: WORKER_SECRET_TOKEN }));
+                    // --- END SEND AUTH TOKEN ---
+
                     if (pingInterval) clearInterval(pingInterval);
                     pingInterval = setInterval(() => {
                         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -464,6 +424,18 @@
                 socket.onmessage = (event) => {
                     try {
                         const message = JSON.parse(event.data);
+                        // --- HANDLE AUTH RESPONSE ---
+                        if (message.type === 'auth_success') {
+                            console.log("Authentication successful!");
+                            // Update UI state based on whether a PDF is loaded or not
+                            if (currentPDFName) {
+                                setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                            } else {
+                                 setUIState('worker_ready', 'AI worker connected.');
+                            }
+                            return; // Don't process auth_success further
+                        }
+                        // --- END AUTH RESPONSE ---
                         handleServerMessage(message);
                     } catch (error) {
                         console.error("❌ Failed to handle message:", error, event.data);
@@ -580,8 +552,8 @@
                 container.appendChild(bubble);
                 container.scrollTop = container.scrollHeight;
                 
-                if (sender === 'user' || (sender !== 'system' && text !== '' && !streamingState[target].active)) {
-                    history.push({ sender, text: text, imageB64: imageB64 });
+                if (sender === 'user') {
+                     history.push({ sender, text: text, imageB64: imageB64 });
                 }
                 
                 return { bubble: bubble, contentDiv: textNode, summary: null };
@@ -619,17 +591,8 @@
                 ui.errorRetryContainerPdf.style.display = 'none';
                 ui.errorRetryContainerAi.style.display = 'none';
                 
-                // Clear the AI's failed message (last entry) and the user's last message (second to last entry)
-                const history = tab === 'pdf_chat' ? pdfChatHistory : aiChatHistory;
-                if (history.length > 0 && history[history.length - 1].sender !== 'user') {
-                    history.pop(); // Remove the AI's failed message
-                }
-                if (history.length > 0 && history[history.length - 1].sender === 'user') {
-                    history.pop(); // Remove the user's last message (will be re-added by sendMessage)
-                }
-                
                 // Re-send the message using the stored values
-                sendMessage(lastUserMessageText, tab, lastUserMessageImageB64);
+                sendMessage(lastUserMessageText, tab, lastUserMessageImageB64, true); // Pass true to indicate it's a retry
             }
 
 
@@ -692,6 +655,7 @@
                         finalizeStream(mainTarget, true); 
                         showRetryButton(mainTarget, message.data);
                         cleanupStreaming(mainTarget.replace('_chat', '_thoughts'));
+                        setUIState('worker_ready', 'Error occurred.');
                         break;
                         
                     case 'pong':
@@ -861,54 +825,26 @@
                 }
             } 
             
-            // --- NEW: Fast Mode Toggle Logic ---
-            function toggleFastMode(button) {
-                fastMode = !fastMode;
-                
-                [ui.fastModeButtonAi, ui.fastModeButtonPdf].forEach(btn => {
-                    if (fastMode) {
-                        btn.classList.add('fast-active');
-                        btn.textContent = '⚡ FAST MODE ACTIVE';
-                    } else {
-                        btn.classList.remove('fast-active');
-                        btn.textContent = '⚡ Fast Paste';
-                    }
-                });
-
-                if (fastMode && Object.values(streamingState).some(s => s.active) && renderInterval) {
-                    clearInterval(renderInterval);
-                    renderInterval = setInterval(() => renderCharacters(), 1); 
-                } else if (!fastMode && Object.values(streamingState).some(s => s.active)) {
-                    clearInterval(renderInterval);
-                    renderInterval = setInterval(() => renderCharacters(), RENDER_SPEED);
-                }
-            }
-
-            ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
-            ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
-            // --- END NEW LOGIC ---
-            
             // --- MODIFIED SEND FUNCTIONS ---
-            function sendMessage(question, tab, imageB64 = null) {
+            function sendMessage(question, tab, imageB64 = null, isRetry = false) {
                 if (!question || !socket || socket.readyState !== WebSocket.OPEN) return; 
                 
                 if (streamingState.pdf_chat.active || streamingState.ai_chat.active) { 
                     return; 
                 } 
                 
-                // 1. Store the message and image for potential retry (CRUCIAL)
                 lastUserMessageText = question;
                 lastUserMessageImageB64 = imageB64;
                 
                 const history = tab === 'ai_chat' ? aiChatHistory : pdfChatHistory;
                 
-                // 2. Add the new message to the UI (and history)
-                addMessage(question, 'user', tab, imageB64);
+                // Only add a new message to the UI if it's not a retry
+                if (!isRetry) {
+                    addMessage(question, 'user', tab, imageB64);
+                }
                 
-                // 3. Prepare the history to send to the worker (excluding the user's latest message if it was just added)
                 const historyForWorker = history.slice(0, -1);
                 
-                // 4. Send the data
                 if (tab === 'pdf_chat') {
                     socket.send(JSON.stringify({ 
                         type: 'ask', 
@@ -930,7 +866,6 @@
                     })); 
                 }
                 
-                // 5. Clean up and update status
                 ui.messageInput.value = ''; 
                 ui.messageInputAI.value = '';
                 ui.imagePreviewContainerAI.style.display = 'none';
@@ -959,7 +894,33 @@
                 } 
             });
 
-            // --- REST OF STANDARD FUNCTIONS (omitted for brevity, assume they are present) ---
+            // --- Fast Mode Toggle Logic ---
+            function toggleFastMode(button) {
+                fastMode = !fastMode;
+                
+                [ui.fastModeButtonAi, ui.fastModeButtonPdf].forEach(btn => {
+                    if (fastMode) {
+                        btn.classList.add('fast-active');
+                        btn.textContent = '⚡ FAST MODE ACTIVE';
+                    } else {
+                        btn.classList.remove('fast-active');
+                        btn.textContent = '⚡ Fast Paste';
+                    }
+                });
+
+                if (fastMode && Object.values(streamingState).some(s => s.active) && renderInterval) {
+                    clearInterval(renderInterval);
+                    renderInterval = setInterval(() => renderCharacters(), 1); 
+                } else if (!fastMode && Object.values(streamingState).some(s => s.active)) {
+                    clearInterval(renderInterval);
+                    renderInterval = setInterval(() => renderCharacters(), RENDER_SPEED);
+                }
+            }
+
+            ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
+            ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
+            
+            // The rest of the functions (renderHistory, autosaveChat, etc.) are assumed to be here and correct
             
             function renderHistory(history, target = 'pdf_chat') {
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
@@ -1202,7 +1163,7 @@
                 } 
             }); 
 
-            // Final initialization calls:
+            // Initialize 
             checkWorkerStatus(); 
             ui.tabChatPDF.click(); 
         }); 
