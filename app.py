@@ -1,4 +1,4 @@
-# File: server.py (Final Version with User Authentication)
+# File: server.py (Final Version with Stable Handshake)
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body
 from fastapi.responses import FileResponse
@@ -13,17 +13,15 @@ import os
 from typing import Dict
 
 # --- CONFIGURATION & SECURITY ---
-# The SECRET_KEY is used to sign JWTs. It MUST be kept secret.
-# For production, this is loaded from an environment variable.
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token lasts for one day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
-USERS_DB_FILE = "users.json" # This file will store user credentials.
+USERS_DB_FILE = "users.json" 
 
 app = FastAPI()
 
-# --- USER MANAGEMENT HELPERS ---
+# --- USER MANAGEMENT HELPERS (Functions remain unchanged) ---
 def load_users():
     """Loads users from the JSON file."""
     if not os.path.exists(USERS_DB_FILE):
@@ -32,7 +30,7 @@ def load_users():
         try:
             return json.load(f)
         except json.JSONDecodeError:
-            return {} # Return empty dict if file is empty or corrupt
+            return {} 
 
 def save_users(users_data):
     """Saves the users dictionary to the JSON file."""
@@ -58,9 +56,6 @@ def create_access_token(data: dict, expires_delta: datetime.timedelta | None = N
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# --- END USER MANAGEMENT ---
-
-
 def log_message(msg):
     """Helper function for timestamped logs."""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -72,7 +67,7 @@ class ConnectionManager:
         self.local_worker: WebSocket | None = None
 
     async def connect_web_client(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
+        # NOTE: WE ARE REMOVING THE ACCEPT CALL HERE, it moves to the endpoint below
         self.web_clients[user_id] = websocket
         log_message(f"Web client '{user_id}' connected.")
 
@@ -112,7 +107,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- HTTP ENDPOINTS ---
+# --- HTTP ENDPOINTS (Functions remain unchanged) ---
 
 @app.get("/")
 async def get_homepage():
@@ -125,7 +120,6 @@ async def get_status():
 
 @app.post("/signup")
 async def signup(user_data: dict = Body(...)):
-    """Handles user registration."""
     username = user_data.get("username")
     password = user_data.get("password")
     if not username or not password:
@@ -143,7 +137,6 @@ async def signup(user_data: dict = Body(...)):
 
 @app.post("/login")
 async def login(user_data: dict = Body(...)):
-    """Handles user login and issues a JWT."""
     username = user_data.get("username")
     password = user_data.get("password")
     if not username or not password:
@@ -182,7 +175,6 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
 
 @app.websocket("/ws/worker")
 async def worker_websocket(websocket: WebSocket):
-    # This endpoint is simple as it's a trusted local connection
     await manager.connect_local_worker(websocket)
     try:
         while True:
@@ -194,8 +186,12 @@ async def worker_websocket(websocket: WebSocket):
 @app.websocket("/ws/web")
 async def web_client_websocket(websocket: WebSocket):
     user_id = None
+    
+    # CRITICAL FIX: Accept the connection immediately to prevent the ASGI handshake error
+    await websocket.accept() 
+    
     try:
-        # First message must be authentication
+        # Now safely wait for the authentication message with a timeout
         auth_data_str = await asyncio.wait_for(websocket.receive_text(), timeout=10)
         auth_data = json.loads(auth_data_str)
         
@@ -207,19 +203,25 @@ async def web_client_websocket(websocket: WebSocket):
                 payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
                 user_id = payload.get("sub")
                 if user_id is None:
-                    raise WebSocketDisconnect(code=1008, reason="Invalid token payload")
+                    # Close socket if payload is invalid
+                    await websocket.close(code=1008, reason="Invalid token payload")
+                    return 
             except jwt.ExpiredSignatureError:
-                raise WebSocketDisconnect(code=1008, reason="Token has expired")
+                await websocket.close(code=1008, reason="Token has expired")
+                return
             except jwt.InvalidTokenError:
-                raise WebSocketDisconnect(code=1008, reason="Invalid token")
+                await websocket.close(code=1008, reason="Invalid token")
+                return
         else: # Guest Mode
             user_id = auth_data.get("user_id")
             if not user_id:
-                raise WebSocketDisconnect(code=1008, reason="Guest user_id missing")
+                await websocket.close(code=1008, reason="Guest user_id missing")
+                return
 
-        # If authentication successful, connect client
+        # If authentication successful, register the client with the manager
         await manager.connect_web_client(websocket, user_id)
         
+        # Main message receiving loop
         while True:
             data_text = await websocket.receive_text()
             data = json.loads(data_text)
@@ -227,7 +229,6 @@ async def web_client_websocket(websocket: WebSocket):
             if data.get("type") == "ping":
                 continue
             
-            # Re-assign user_id to ensure it's correct for every message
             data['user_id'] = user_id
             await manager.forward_to_worker(json.dumps(data))
             
@@ -236,8 +237,10 @@ async def web_client_websocket(websocket: WebSocket):
             manager.disconnect_web_client(user_id)
     except asyncio.TimeoutError:
         log_message("Client failed to authenticate in time.")
+        if websocket.client_state.name == 'CONNECTED': # Check if socket is still open before trying to close
+            await websocket.close(code=1008, reason="Authentication timeout")
     except Exception as e:
         log_message(f"Error in web client websocket: {e}")
-        if user_id:
+        if websocket.client_state.name == 'CONNECTED':
             manager.disconnect_web_client(user_id)
-
+            await websocket.close(code=1011)
