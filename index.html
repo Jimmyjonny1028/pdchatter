@@ -12,6 +12,28 @@
         .user-bubble { background-color: #2563eb; color: white; }
         .ai-bubble { background-color: #334155; color: #f1f5f9; }
         
+        /* --- STYLES FOR AUTH MODAL --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+        }
+        .modal-content {
+            background-color: #1e293b;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 400px;
+            color: white;
+        }
+
         /* --- STYLES FOR THOUGHTS BUBBLE --- */
         .thoughts-bubble { 
             background-color: #1e293b; 
@@ -109,9 +131,8 @@
             line-height: 1.5;
             font-family: 'Courier New', Courier, monospace;
         }
-        /* -------------------------------------- */
         
-        /* --- NEW STYLES FOR RETRY BUTTON --- */
+        /* --- STYLES FOR RETRY BUTTON --- */
         .retry-button {
             background-color: #dc2626; /* Red-600 */
             color: white;
@@ -132,7 +153,6 @@
             justify-content: center;
             padding: 1rem;
         }
-        /* ----------------------------------- */
 
         #chat-sidebar { transition: transform 0.3s ease-in-out; }
         .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
@@ -148,29 +168,46 @@
 
         #chat-container::-webkit-scrollbar-thumb,
         #chat-container-ai::-webkit-scrollbar-thumb,
-        #saved-chats-list::-webkit-scrollbar-thumb { background: #475569; 
-        border-radius: 4px; }
+        #saved-chats-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         
 
-        .ai-bubble pre { background-color: #0f172a; color: #e2e8f0; 
-        padding: 1rem; border-radius: 0.5rem; overflow-x: auto; position: 
-        relative; }
+        .ai-bubble pre { background-color: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; position: relative; }
         .ai-bubble code { font-family: 'Courier New', Courier, monospace; }
         .user-bubble img { max-width: 150px; border-radius: 0.5rem; margin-top: 0.5rem; }
 
-        .copy-button { position: absolute; top: 0.5rem; right: 0.5rem; 
-        background-color: #475569; color: white; border: none; padding: 0.25rem 
-        0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem; 
-        opacity: 0; transition: opacity 0.2s; }
+        .copy-button { position: absolute; top: 0.5rem; right: 0.5rem; background-color: #475569; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.8rem; opacity: 0; transition: opacity 0.2s; }
         pre:hover .copy-button { opacity: 1; }
 
-        .ai-bubble table { width: 100%; margin-top: 1em; margin-bottom:
-        1em; border-collapse: collapse; border: 1px solid #475569; }
+        .ai-bubble table { width: 100%; margin-top: 1em; margin-bottom: 1em; border-collapse: collapse; border: 1px solid #475569; }
         .ai-bubble th, .ai-bubble td { border: 1px solid #475569; padding: 0.5rem 0.75rem; text-align: left; }
         .ai-bubble th { background-color: #1e293b; font-weight: bold; }
     </style>
 </head>
 <body class="bg-gray-100 h-screen overflow-hidden">
+
+    <div id="auth-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h2 id="auth-title" class="text-2xl font-bold mb-4">Login</h2>
+            <div id="auth-error" class="text-red-400 mb-2" style="display: none;"></div>
+            <form id="auth-form">
+                <div class="mb-4">
+                    <label for="username" class="block mb-1">Username</label>
+                    <input type="text" id="username" class="w-full bg-slate-700 border border-slate-600 rounded p-2" required>
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block mb-1">Password</label>
+                    <input type="password" id="password" class="w-full bg-slate-700 border border-slate-600 rounded p-2" required>
+                </div>
+                <div class="flex justify-between items-center">
+                    <div>
+                        <button type="submit" id="auth-submit-button" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Login</button>
+                        <button type="button" id="auth-close-button" class="text-slate-400 hover:text-white ml-2">Cancel</button>
+                    </div>
+                    <button type="button" id="auth-switch-button" class="text-sm text-indigo-400 hover:underline">Need an account? Sign up</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div class="flex h-full">
 
@@ -180,6 +217,7 @@
                 <h2 id="sidebar-title" class="text-xl font-bold">Saved Chats</h2>
                 <button id="close-sidebar-button" class="text-slate-400 hover:text-white text-2xl">&times;</button>
             </div>
+            <div id="user-status" class="text-center text-sm text-slate-400 mb-2">Guest Mode</div>
             <button id="new-chat-button" class="w-full text-left p-2 mb-2 bg-indigo-500 rounded-md hover:bg-indigo-600">＋ New Chat</button>
             <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-2"></div>
         </aside>
@@ -195,9 +233,11 @@
                         <p id="status" class="text-sm text-gray-500">Status: Connecting to server...</p>
                     </div>
                 </div>
-                <div>
+                <div class="flex items-center space-x-4">
                     <button id="tab-chatpdf" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">ChatPDF</button>
                     <button id="tab-ai-chat" class="tab-button py-2 px-4 text-gray-500 font-semibold border-b-2">AI Chat</button>
+                    <button id="login-button" class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600">Login / Sign Up</button>
+                    <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600" style="display: none;">Logout</button>
                 </div>
             </header>
 
@@ -284,10 +324,20 @@
                 
                 errorRetryContainerPdf: document.getElementById('error-retry-container-pdf'),
                 errorRetryContainerAi: document.getElementById('error-retry-container-ai'),
+                
+                authModal: document.getElementById('auth-modal'),
+                authTitle: document.getElementById('auth-title'),
+                authError: document.getElementById('auth-error'),
+                authForm: document.getElementById('auth-form'),
+                authSubmitButton: document.getElementById('auth-submit-button'),
+                authCloseButton: document.getElementById('auth-close-button'),
+                authSwitchButton: document.getElementById('auth-switch-button'),
+                loginButton: document.getElementById('login-button'),
+                logoutButton: document.getElementById('logout-button'),
+                userStatus: document.getElementById('user-status'),
+                usernameInput: document.getElementById('username'),
+                passwordInput: document.getElementById('password')
             };
-            
-            let userId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
-            localStorage.setItem('ai_toolkit_user_id', userId);
             
             let pdfChatHistory = [];
             let aiChatHistory = [];
@@ -297,12 +347,10 @@
             
             let fastMode = false; 
             
-            // GLOBAL STATE FOR RETRY (CRUCIAL)
             let lastUserMessageText = null; 
             let lastUserMessageImageB64 = null; 
             
-            // ADDED: Define your secret token here (must match the worker)
-            const WORKER_SECRET_TOKEN = "your_super_secret_token_12345";
+            let isLoginMode = true;
 
             let socket, statusInterval, pingInterval;
             
@@ -317,20 +365,103 @@
             const RENDER_SPEED = 10; 
             const CHARS_PER_TICK = 3;
             
-            // NEW FUNCTION: Renders code block HTML with line numbers
+            // --- AUTHENTICATION LOGIC ---
+            function showAuthModal(show) {
+                ui.authModal.style.display = show ? 'flex' : 'none';
+                if (!show) {
+                    ui.authError.style.display = 'none';
+                    ui.authForm.reset();
+                }
+            }
+            
+            function updateAuthUI() {
+                const token = sessionStorage.getItem('ai_toolkit_token');
+                if (token) {
+                    try {
+                        const payload = JSON.parse(atob(token.split('.')[1]));
+                        ui.userStatus.textContent = `Logged in: ${payload.sub}`;
+                        ui.loginButton.style.display = 'none';
+                        ui.logoutButton.style.display = 'block';
+                    } catch (e) {
+                        handleLogout(); // Invalid token
+                    }
+                } else {
+                    ui.userStatus.textContent = 'Guest Mode';
+                    ui.loginButton.style.display = 'block';
+                    ui.logoutButton.style.display = 'none';
+                }
+            }
+            
+            async function handleAuthSubmit(event) {
+                event.preventDefault();
+                const username = ui.usernameInput.value.trim();
+                const password = ui.passwordInput.value.trim();
+                const endpoint = isLoginMode ? '/login' : '/signup';
+                
+                try {
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'An error occurred.');
+                    }
+                    
+                    if (isLoginMode) {
+                        sessionStorage.setItem('ai_toolkit_token', data.access_token);
+                        showAuthModal(false);
+                        updateAuthUI();
+                        startNewChat(); // Start a fresh chat on login
+                    } else {
+                        // Switch to login mode after successful signup
+                        isLoginMode = true;
+                        ui.authTitle.textContent = 'Login';
+                        ui.authSubmitButton.textContent = 'Login';
+                        ui.authSwitchButton.textContent = 'Need an account? Sign up';
+                        ui.authError.style.display = 'block';
+                        ui.authError.textContent = 'Signup successful! Please log in.';
+                        ui.authForm.reset();
+                    }
+                } catch (error) {
+                    ui.authError.style.display = 'block';
+                    ui.authError.textContent = error.message;
+                }
+            }
+
+            function handleLogout() {
+                sessionStorage.removeItem('ai_toolkit_token');
+                updateAuthUI();
+                startNewChat(); // Start a fresh guest chat on logout
+            }
+
+            // Event Listeners for Auth UI
+            ui.loginButton.addEventListener('click', () => showAuthModal(true));
+            ui.authCloseButton.addEventListener('click', () => showAuthModal(false));
+            ui.authSwitchButton.addEventListener('click', () => {
+                isLoginMode = !isLoginMode;
+                ui.authTitle.textContent = isLoginMode ? 'Login' : 'Sign Up';
+                ui.authSubmitButton.textContent = isLoginMode ? 'Login' : 'Sign Up';
+                ui.authSwitchButton.textContent = isLoginMode ? 'Need an account? Sign up' : 'Have an account? Login';
+                ui.authError.style.display = 'none';
+                ui.authForm.reset();
+            });
+            ui.authForm.addEventListener('submit', handleAuthSubmit);
+            ui.logoutButton.addEventListener('click', handleLogout);
+
+            // --- END AUTH LOGIC ---
+
             function renderCodeBlock(codeText) {
                 const lines = codeText.trim().split('\n');
                 const langMatch = lines[0].match(/```(\w+)/);
                 const language = langMatch ? langMatch[1] : '';
-                
                 const codeLines = lines.slice(1, lines.length - 1).join('\n');
-                
                 const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
                 const codeHtml = codeLines.split('\n').map(line => `<code>${escapeHtml(line)}</code>`).join('');
-                
                 const lineNumbers = codeLines.split('\n').map((_, index) => index + 1).join('\n');
-
                 return `
                     <div class="code-block-container">
                         ${language ? `<span class="language-tag">${language}</span>` : ''}
@@ -390,7 +521,7 @@
                     if (!response.ok) throw new Error("Server not reachable");
                     const data = await response.json();
                     if (data.worker_connected) {
-                        setUIState('worker_ready', 'AI worker connected. Authenticating...'); // Update status
+                        setUIState('worker_ready', 'AI worker connected. Authenticating...');
                         clearInterval(statusInterval);
                         connectWebSocket();
                     } else {
@@ -404,15 +535,21 @@
 
             function connectWebSocket() {
                 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${wsProtocol}//${window.location.host}/ws/web/${userId}`;
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws/web`; // No user_id in URL
                 socket = new WebSocket(wsUrl);
 
                 socket.onopen = () => {
-                    console.log("WebSocket connected. Sending auth token...");
-                    // --- SEND AUTH TOKEN ---
-                    socket.send(JSON.stringify({ type: 'auth', token: WORKER_SECRET_TOKEN }));
-                    // --- END SEND AUTH TOKEN ---
-
+                    console.log("WebSocket connected. Sending auth...");
+                    const token = sessionStorage.getItem('ai_toolkit_token');
+                    if (token) {
+                        socket.send(JSON.stringify({ type: 'auth', token: token }));
+                    } else {
+                        // Guest user
+                        const guestId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
+                        localStorage.setItem('ai_toolkit_user_id', guestId);
+                        socket.send(JSON.stringify({ type: 'auth', user_id: guestId }));
+                    }
+                    
                     if (pingInterval) clearInterval(pingInterval);
                     pingInterval = setInterval(() => {
                         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -424,18 +561,15 @@
                 socket.onmessage = (event) => {
                     try {
                         const message = JSON.parse(event.data);
-                        // --- HANDLE AUTH RESPONSE ---
                         if (message.type === 'auth_success') {
                             console.log("Authentication successful!");
-                            // Update UI state based on whether a PDF is loaded or not
                             if (currentPDFName) {
                                 setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
                             } else {
                                  setUIState('worker_ready', 'AI worker connected.');
                             }
-                            return; // Don't process auth_success further
+                            return;
                         }
-                        // --- END AUTH RESPONSE ---
                         handleServerMessage(message);
                     } catch (error) {
                         console.error("❌ Failed to handle message:", error, event.data);
@@ -454,7 +588,6 @@
                     if (statusInterval) clearInterval(statusInterval);
                     statusInterval = setInterval(checkWorkerStatus, 3000);
 
-                    // CRITICAL FIX: Show retry button if the closure interrupted an active response
                     if (wasStreaming && lastUserMessageText) {
                         showRetryButton(targetTab, `Connection lost during response (Code ${event.code}). Please retry.`);
                     }
@@ -468,13 +601,10 @@
             function addCopyButtonsTo(containerElement) {
                 containerElement.querySelectorAll('.code-block-container').forEach(blockContainer => {
                     if (blockContainer.querySelector('.copy-button.attached')) return;
-                    
                     const codeElement = blockContainer.querySelector('.code-content code');
                     if (!codeElement) return;
-
                     const button = blockContainer.querySelector('.copy-button');
                     button.classList.add('attached');
-
                     button.addEventListener('click', () => {
                         const code = codeElement.innerText;
                         navigator.clipboard.writeText(code).then(() => {
@@ -484,11 +614,9 @@
                     });
                 });
                 
-                // Legacy support for non-code pre blocks (tables/old markdown)
                 containerElement.querySelectorAll('pre').forEach(block => {
                     if (block.querySelector('.copy-button.attached')) return;
                     if (block.closest('.code-block-container')) return;
-
                     const button = document.createElement('button');
                     button.className = 'copy-button attached';
                     button.textContent = 'Copy';
@@ -559,7 +687,6 @@
                 return { bubble: bubble, contentDiv: textNode, summary: null };
             }
             
-            // NEW FUNCTION: Displays the retry button
             function showRetryButton(tab, errorMsg) {
                 const errorContainer = tab === 'pdf_chat' ? ui.errorRetryContainerPdf : ui.errorRetryContainerAi;
                 const targetChatContainer = tab === 'pdf_chat' ? ui.chatContainer : ui.chatContainerAI;
@@ -584,15 +711,18 @@
                 targetChatContainer.scrollTop = targetChatContainer.scrollHeight;
             }
 
-            // NEW FUNCTION: Sends the last message again
             function retryLastMessage(tab) {
                 if (!lastUserMessageText) return;
 
                 ui.errorRetryContainerPdf.style.display = 'none';
                 ui.errorRetryContainerAi.style.display = 'none';
                 
-                // Re-send the message using the stored values
-                sendMessage(lastUserMessageText, tab, lastUserMessageImageB64, true); // Pass true to indicate it's a retry
+                const history = tab === 'pdf_chat' ? pdfChatHistory : aiChatHistory;
+                if (history.length > 0 && history[history.length - 1].sender !== 'user') {
+                    history.pop();
+                }
+                
+                sendMessage(lastUserMessageText, tab, lastUserMessageImageB64, true);
             }
 
 
@@ -610,7 +740,6 @@
                         
                     case 'answer_chunk':
                         if (!streamingState[targetKey].active) {
-                            // Initialize stream state
                             streamingState[targetKey].active = true;
                             streamingState[targetKey].ended = false;
                             streamingState[targetKey].textBuffer = ''; 
@@ -749,14 +878,8 @@
                 targets.forEach(key => {
                     if (streamingState[key]) {
                         streamingState[key] = { 
-                            active: false, 
-                            bubble: null, 
-                            contentDiv: null,
-                            summary: null,
-                            ended: false, 
-                            textBuffer: '', 
-                            currentText: '',
-                            isCode: false 
+                            active: false, bubble: null, contentDiv: null, summary: null,
+                            ended: false, textBuffer: '', currentText: '', isCode: false 
                         };
                     }
                 });
@@ -804,11 +927,7 @@
                         
                         const lastMsg = history[history.length - 1];
                         if (!lastMsg || lastMsg.sender !== 'ai' || lastMsg.text !== text) {
-                            history.push({ 
-                                sender: 'ai', 
-                                text: text, 
-                                imageB64: null 
-                            });
+                            history.push({ sender: 'ai', text: text, imageB64: null });
                         }
                         autosaveChat();
                     }
@@ -825,20 +944,16 @@
                 }
             } 
             
-            // --- MODIFIED SEND FUNCTIONS ---
             function sendMessage(question, tab, imageB64 = null, isRetry = false) {
-                if (!question || !socket || socket.readyState !== WebSocket.OPEN) return; 
-                
-                if (streamingState.pdf_chat.active || streamingState.ai_chat.active) { 
-                    return; 
-                } 
+                if (!question && !imageB64) return;
+                if (!socket || socket.readyState !== WebSocket.OPEN) return; 
+                if (streamingState.pdf_chat.active || streamingState.ai_chat.active) return; 
                 
                 lastUserMessageText = question;
                 lastUserMessageImageB64 = imageB64;
                 
                 const history = tab === 'ai_chat' ? aiChatHistory : pdfChatHistory;
                 
-                // Only add a new message to the UI if it's not a retry
                 if (!isRetry) {
                     addMessage(question, 'user', tab, imageB64);
                 }
@@ -874,30 +989,24 @@
                 setUIState('ai_thinking', 'AI is thinking...'); 
             }
             
-            // --- HOOKING UP UI LISTENERS ---
-            ui.sendButton.addEventListener('click', () => {
-                sendMessage(ui.messageInput.value.trim(), 'pdf_chat');
-            });
+            // --- UI HOOKS ---
+            ui.sendButton.addEventListener('click', () => sendMessage(ui.messageInput.value.trim(), 'pdf_chat'));
             ui.messageInput.addEventListener('keydown', (e) => { 
                 if (e.key === 'Enter' && !e.shiftKey) { 
                     e.preventDefault(); 
                     sendMessage(ui.messageInput.value.trim(), 'pdf_chat'); 
                 } 
             });
-            ui.sendButtonAI.addEventListener('click', () => {
-                sendMessage(ui.messageInputAI.value.trim(), 'ai_chat', uploadedImageB64);
-            });
+            ui.sendButtonAI.addEventListener('click', () => sendMessage(ui.messageInputAI.value.trim(), 'ai_chat', uploadedImageB64));
             ui.messageInputAI.addEventListener('keydown', (e) => { 
                 if (e.key === 'Enter' && !e.shiftKey) { 
                     e.preventDefault(); 
                     sendMessage(ui.messageInputAI.value.trim(), 'ai_chat', uploadedImageB64); 
                 } 
             });
-
-            // --- Fast Mode Toggle Logic ---
+            
             function toggleFastMode(button) {
                 fastMode = !fastMode;
-                
                 [ui.fastModeButtonAi, ui.fastModeButtonPdf].forEach(btn => {
                     if (fastMode) {
                         btn.classList.add('fast-active');
@@ -907,7 +1016,6 @@
                         btn.textContent = '⚡ Fast Paste';
                     }
                 });
-
                 if (fastMode && Object.values(streamingState).some(s => s.active) && renderInterval) {
                     clearInterval(renderInterval);
                     renderInterval = setInterval(() => renderCharacters(), 1); 
@@ -916,11 +1024,8 @@
                     renderInterval = setInterval(() => renderCharacters(), RENDER_SPEED);
                 }
             }
-
             ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
             ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
-            
-            // The rest of the functions (renderHistory, autosaveChat, etc.) are assumed to be here and correct
             
             function renderHistory(history, target = 'pdf_chat') {
                 const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
@@ -963,6 +1068,9 @@
             }
 
             function autosaveChat() { 
+                const token = sessionStorage.getItem('ai_toolkit_token');
+                if (!token) return; // Only save chats for logged-in users
+
                 const historyToSave = (activeTab === 'ai_chat') ? aiChatHistory : pdfChatHistory; 
                 if (historyToSave.length === 0) return; 
                 
@@ -981,26 +1089,35 @@
                     else sessionStorage.setItem('currentPdfChatId', chatId); 
                 } 
                 
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const username = payload.sub;
+                const storageKey = `${username}_${chatId}`;
+                
                 const chatData = { 
-                    id: chatId, 
-                    name: chatName, 
-                    type: activeTab, 
-                    timestamp: new Date().toISOString(), 
-                    history: historyToSave, 
+                    id: chatId, name: chatName, type: activeTab, 
+                    timestamp: new Date().toISOString(), history: historyToSave, 
                     pdfName: (activeTab === 'pdf_chat') ? currentPDFName : null 
                 }; 
                 
-                localStorage.setItem(chatId, JSON.stringify(chatData)); 
+                localStorage.setItem(storageKey, JSON.stringify(chatData)); 
             } 
             
             function loadSavedChats() { 
+                const token = sessionStorage.getItem('ai_toolkit_token');
+                if (!token) {
+                    ui.savedChatsList.innerHTML = '<p class="text-slate-400">Log in to save and view chats.</p>';
+                    return;
+                }
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const username = payload.sub;
+
                 ui.sidebarTitle.textContent = activeTab === 'pdf_chat' ? "Saved PDF Chats" : "Saved AI Chats"; 
                 ui.savedChatsList.innerHTML = ''; 
                 const chats = []; 
                 
                 for (let i = 0; i < localStorage.length; i++) { 
                     const key = localStorage.key(i); 
-                    if (key.startsWith('chat_')) { 
+                    if (key.startsWith(`${username}_chat_`)) { 
                         const chat = JSON.parse(localStorage.getItem(key)); 
                         if (chat.type === activeTab) chats.push(chat); 
                     } 
@@ -1013,10 +1130,11 @@
                 } else { 
                     chats.forEach(chat => { 
                         const item = document.createElement('div'); 
-
                         item.className = 'p-2 bg-slate-700 rounded-md cursor-pointer hover:bg-slate-600 truncate flex justify-between items-center'; 
                         item.textContent = chat.name; 
-                        item.onclick = () => loadChat(chat.id); 
+                        
+                        const storageKey = `${username}_${chat.id}`;
+                        item.onclick = () => loadChat(storageKey); 
                         
                         const deleteBtn = document.createElement('button'); 
                         deleteBtn.className = 'text-red-400 hover:text-red-300 ml-2'; 
@@ -1024,7 +1142,7 @@
                         deleteBtn.onclick = (e) => { 
                             e.stopPropagation(); 
                             if (confirm(`Delete "${chat.name}"?`)) { 
-                                localStorage.removeItem(chat.id); 
+                                localStorage.removeItem(storageKey); 
                                 loadSavedChats(); 
                             } 
                         }; 
@@ -1034,14 +1152,14 @@
                 } 
             } 
 
-            function loadChat(chatId) { 
-                const chatData = JSON.parse(localStorage.getItem(chatId)); 
+            function loadChat(storageKey) { 
+                const chatData = JSON.parse(localStorage.getItem(storageKey)); 
                 if (!chatData) return; 
                 
                 if (chatData.type === 'pdf_chat') { 
                     pdfChatHistory = chatData.history; 
                     currentPDFName = chatData.pdfName; 
-                    sessionStorage.setItem('currentPdfChatId', chatId); 
+                    sessionStorage.setItem('currentPdfChatId', chatData.id); 
                     renderHistory(pdfChatHistory, 'pdf_chat'); 
                     ui.pdfTitle.textContent = currentPDFName || 'PDF Preview'; 
                     ui.pdfViewer.src = ''; 
@@ -1049,7 +1167,7 @@
                     addMessage(`Please re-upload "${currentPDFName}" to continue this conversation.`, 'system', 'pdf_chat'); 
                 } else { 
                     aiChatHistory = chatData.history; 
-                    sessionStorage.setItem('currentAIChatId', chatId); 
+                    sessionStorage.setItem('currentAIChatId', chatData.id); 
                     renderHistory(aiChatHistory, 'ai_chat'); 
                     setUIState('worker_ready', 'AI worker connected.'); 
                 } 
@@ -1083,11 +1201,20 @@
                 setUIState('processing', `Processing '${file.name}'...`); 
                 addMessage(`Uploading and sending to worker...`, 'ai', 'pdf_chat'); 
                 
+                let user_id;
+                const token = sessionStorage.getItem('ai_toolkit_token');
+                if (token) {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    user_id = payload.sub;
+                } else {
+                    user_id = localStorage.getItem('ai_toolkit_user_id');
+                }
+
                 const formData = new FormData(); 
                 formData.append('file', file); 
                 
                 try { 
-                    const response = await fetch(`/upload/${userId}`, { method: 'POST', body: formData }); 
+                    const response = await fetch(`/upload/${user_id}`, { method: 'POST', body: formData }); 
                     if (!response.ok) { 
                         const errorData = await response.json(); 
                         throw new Error(errorData.detail || 'Failed to start PDF processing.'); 
@@ -1164,6 +1291,7 @@
             }); 
 
             // Initialize 
+            updateAuthUI();
             checkWorkerStatus(); 
             ui.tabChatPDF.click(); 
         }); 
