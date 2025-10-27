@@ -134,7 +134,7 @@
         
         /* --- STYLES FOR RETRY BUTTON --- */
         .retry-button {
-            background-color: #dc2626; /* Red-600 */
+            background-color: #dc2626;
             color: white;
             padding: 0.5rem 1rem;
             border-radius: 0.375rem;
@@ -144,7 +144,7 @@
             transition: background-color 0.2s;
         }
         .retry-button:hover {
-            background-color: #b91c1c; /* Red-700 */
+            background-color: #b91c1c;
         }
 
         #error-retry-container-pdf, 
@@ -354,6 +354,10 @@
 
             let socket, statusInterval, pingInterval;
             
+            // --- CRITICAL FIX: Define the Render server URL as an absolute constant ---
+            const RENDER_API_BASE_URL = "https://chatpdf-server-shtq.onrender.com";
+            // ------------------------------------------------------------------------
+
             let streamingState = {
                 pdf_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
                 ai_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
@@ -383,7 +387,7 @@
                         ui.loginButton.style.display = 'none';
                         ui.logoutButton.style.display = 'block';
                     } catch (e) {
-                        handleLogout(); // Invalid token
+                        handleLogout();
                     }
                 } else {
                     ui.userStatus.textContent = 'Guest Mode';
@@ -396,7 +400,9 @@
                 event.preventDefault();
                 const username = ui.usernameInput.value.trim();
                 const password = ui.passwordInput.value.trim();
-                const endpoint = isLoginMode ? '/login' : '/signup';
+                
+                // MODIFIED: Use the absolute URL for HTTP endpoints
+                const endpoint = isLoginMode ? `${RENDER_API_BASE_URL}/login` : `${RENDER_API_BASE_URL}/signup`;
                 
                 try {
                     const response = await fetch(endpoint, {
@@ -415,9 +421,8 @@
                         sessionStorage.setItem('ai_toolkit_token', data.access_token);
                         showAuthModal(false);
                         updateAuthUI();
-                        startNewChat(); // Start a fresh chat on login
+                        startNewChat();
                     } else {
-                        // Switch to login mode after successful signup
                         isLoginMode = true;
                         ui.authTitle.textContent = 'Login';
                         ui.authSubmitButton.textContent = 'Login';
@@ -435,7 +440,7 @@
             function handleLogout() {
                 sessionStorage.removeItem('ai_toolkit_token');
                 updateAuthUI();
-                startNewChat(); // Start a fresh guest chat on logout
+                startNewChat();
             }
 
             // Event Listeners for Auth UI
@@ -517,7 +522,8 @@
 
             async function checkWorkerStatus() {
                 try {
-                    const response = await fetch(`/status`);
+                    // MODIFIED: Use the absolute URL for HTTP endpoints
+                    const response = await fetch(`${RENDER_API_BASE_URL}/status`); 
                     if (!response.ok) throw new Error("Server not reachable");
                     const data = await response.json();
                     if (data.worker_connected) {
@@ -534,19 +540,19 @@
             }
 
             function connectWebSocket() {
-                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${wsProtocol}//${window.location.host}/ws/web`; // No user_id in URL
-                socket = new WebSocket(wsUrl);
-
+                // MODIFIED: Use the absolute WSS URL for the WebSocket connection
+                const wsUrl = `${RENDER_API_BASE_URL}/ws/web`; 
+                socket = new WebSocket(wsUrl.replace('http', 'ws')); // Handle both http and https/wss
+                
                 socket.onopen = () => {
                     console.log("WebSocket connected. Sending auth...");
                     const token = sessionStorage.getItem('ai_toolkit_token');
+                    let guestId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
+                    localStorage.setItem('ai_toolkit_user_id', guestId);
+                    
                     if (token) {
                         socket.send(JSON.stringify({ type: 'auth', token: token }));
                     } else {
-                        // Guest user
-                        const guestId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
-                        localStorage.setItem('ai_toolkit_user_id', guestId);
                         socket.send(JSON.stringify({ type: 'auth', user_id: guestId }));
                     }
                     
@@ -1007,6 +1013,7 @@
             
             function toggleFastMode(button) {
                 fastMode = !fastMode;
+                
                 [ui.fastModeButtonAi, ui.fastModeButtonPdf].forEach(btn => {
                     if (fastMode) {
                         btn.classList.add('fast-active');
@@ -1016,6 +1023,7 @@
                         btn.textContent = '⚡ Fast Paste';
                     }
                 });
+
                 if (fastMode && Object.values(streamingState).some(s => s.active) && renderInterval) {
                     clearInterval(renderInterval);
                     renderInterval = setInterval(() => renderCharacters(), 1); 
@@ -1024,6 +1032,7 @@
                     renderInterval = setInterval(() => renderCharacters(), RENDER_SPEED);
                 }
             }
+
             ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
             ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
             
@@ -1214,7 +1223,7 @@
                 formData.append('file', file); 
                 
                 try { 
-                    const response = await fetch(`/upload/${user_id}`, { method: 'POST', body: formData }); 
+                    const response = await fetch(`${RENDER_API_BASE_URL}/upload/${user_id}`, { method: 'POST', body: formData }); 
                     if (!response.ok) { 
                         const errorData = await response.json(); 
                         throw new Error(errorData.detail || 'Failed to start PDF processing.'); 
