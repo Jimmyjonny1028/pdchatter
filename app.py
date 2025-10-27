@@ -4,6 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, H
 from fastapi.responses import FileResponse
 import uvicorn
 import json
+import asyncio
 import base64
 import datetime
 import bcrypt
@@ -239,3 +240,4 @@ async def web_client_websocket(websocket: WebSocket):
         log_message(f"Error in web client websocket: {e}")
         if user_id:
             manager.disconnect_web_client(user_id)
+
