@@ -5,3 +5,4 @@ bcrypt
 pyjwt
 websockets
 firebase-admin
+google-cloud-firestore
