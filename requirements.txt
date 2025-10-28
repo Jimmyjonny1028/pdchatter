@@ -6,3 +6,4 @@ pyjwt
 pymongo
 websockets
 certifi
+dnspython
