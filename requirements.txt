@@ -6,3 +6,4 @@ pyjwt
 websockets
 firebase-admin
 google-cloud-firestore
+packaging
