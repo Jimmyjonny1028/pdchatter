@@ -354,10 +354,7 @@
 
             let socket, statusInterval, pingInterval;
             
-            // --- CRITICAL FIX: Define the Render server URL as an absolute constant ---
-            // ALL API CALLS AND WEBSOCKETS MUST USE THIS ABSOLUTE ADDRESS
             const RENDER_API_BASE_URL = "https://chatpdf-server-shtq.onrender.com"; 
-            // ------------------------------------------------------------------------
 
             let streamingState = {
                 pdf_chat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
@@ -380,7 +377,7 @@
             }
             
             function updateAuthUI() {
-                const token = sessionStorage.getItem('ai_toolkit_token');
+                const token = localStorage.getItem('ai_toolkit_token'); // <-- FIX: Use localStorage
                 if (token) {
                     try {
                         const payload = JSON.parse(atob(token.split('.')[1]));
@@ -402,7 +399,6 @@
                 const username = ui.usernameInput.value.trim();
                 const password = ui.passwordInput.value.trim();
                 
-                // CRITICAL FIX: Use absolute URL for login/signup POST requests
                 const endpoint = isLoginMode ? `${RENDER_API_BASE_URL}/login` : `${RENDER_API_BASE_URL}/signup`;
                 
                 try {
@@ -419,7 +415,7 @@
                     }
                     
                     if (isLoginMode) {
-                        sessionStorage.setItem('ai_toolkit_token', data.access_token);
+                        localStorage.setItem('ai_toolkit_token', data.access_token); // <-- FIX: Use localStorage
                         showAuthModal(false);
                         updateAuthUI();
                         startNewChat();
@@ -439,7 +435,7 @@
             }
 
             function handleLogout() {
-                sessionStorage.removeItem('ai_toolkit_token');
+                localStorage.removeItem('ai_toolkit_token'); // <-- FIX: Use localStorage
                 updateAuthUI();
                 startNewChat();
             }
@@ -482,9 +478,10 @@
 
             function setUIState(state, message = "") {
                 ui.status.textContent = `Status: ${message}`;
-                const isChatReady = state === 'ready_to_chat';
-                const isWorkerReady = state === 'worker_ready' || isChatReady;
+                const isChatReady = state === 'ready_to_chat'; // This is for PDF chat
+                const isWorkerReady = state === 'worker_ready' || isChatReady; // This is for general AI chat
                 
+                // Enable/disable PDF upload button
                 ui.pdfUploadInput.disabled = !isWorkerReady;
                 ui.uploadLabel.classList.toggle('cursor-not-allowed', !isWorkerReady);
                 ui.uploadLabel.classList.toggle('cursor-pointer', isWorkerReady);
@@ -492,25 +489,32 @@
                 ui.uploadLabel.classList.toggle('bg-blue-500', isWorkerReady);
                 ui.uploadLabel.classList.toggle('hover:bg-blue-600', isWorkerReady);
                 
+                // Determine if streaming is active on either tab
                 const isPdfStreaming = streamingState.pdf_chat.active || streamingState.pdf_thoughts.active;
                 const isAiStreaming = streamingState.ai_chat.active || streamingState.ai_thoughts.active;
 
-                ui.messageInput.disabled = !isChatReady || isPdfStreaming;
-                ui.sendButton.disabled = !isChatReady || isPdfStreaming;
-                ui.messageInputAI.disabled = !isWorkerReady || isAiStreaming;
-                ui.sendButtonAI.disabled = !isWorkerReady || isAiStreaming;
-
-                if (isChatReady && !isPdfStreaming) {
+                // --- LOGIC FOR PDF CHAT INPUT ---
+                // Must have a ready PDF AND not be streaming
+                const canUsePdfChat = isChatReady && !isPdfStreaming;
+                ui.messageInput.disabled = !canUsePdfChat;
+                ui.sendButton.disabled = !canUsePdfChat;
+                if (canUsePdfChat) {
                     ui.messageInput.placeholder = "Ask a question about the PDF...";
                     ui.sendButton.classList.remove('bg-gray-500'); 
                     ui.sendButton.classList.add('bg-green-500', 'hover:bg-green-600');
                 } else {
-                    ui.messageInput.placeholder = message;
+                    // Use the specific message if provided, otherwise a default
+                    ui.messageInput.placeholder = message && !isChatReady ? message : 'Upload a PDF to begin...';
                     ui.sendButton.classList.add('bg-gray-500'); 
                     ui.sendButton.classList.remove('bg-green-500', 'hover:bg-green-600');
                 }
 
-                if (isWorkerReady && !isAiStreaming) {
+                // --- LOGIC FOR AI CHAT INPUT ---
+                // Must have a connected worker AND not be streaming
+                const canUseAiChat = isWorkerReady && !isAiStreaming;
+                ui.messageInputAI.disabled = !canUseAiChat;
+                ui.sendButtonAI.disabled = !canUseAiChat;
+                if (canUseAiChat) {
                     ui.messageInputAI.placeholder = "Send a message, or paste an image...";
                     ui.sendButtonAI.classList.remove('bg-gray-500'); 
                     ui.sendButtonAI.classList.add('bg-green-500', 'hover:bg-green-600');
@@ -523,7 +527,6 @@
 
             async function checkWorkerStatus() {
                 try {
-                    // CRITICAL FIX: Use absolute URL for status check
                     const response = await fetch(`${RENDER_API_BASE_URL}/status`);
                     if (!response.ok) throw new Error("Server not reachable");
                     const data = await response.json();
@@ -541,13 +544,12 @@
             }
 
             function connectWebSocket() {
-                // MODIFIED: Use the absolute WSS URL for the WebSocket connection
                 const wsUrl = `${RENDER_API_BASE_URL.replace('http://', 'wss://').replace('https://', 'wss://')}/ws/web`; 
                 socket = new WebSocket(wsUrl);
 
                 socket.onopen = () => {
                     console.log("WebSocket connected. Sending auth...");
-                    const token = sessionStorage.getItem('ai_toolkit_token');
+                    const token = localStorage.getItem('ai_toolkit_token'); // <-- FIX: Use localStorage
                     let guestId = localStorage.getItem('ai_toolkit_user_id') || `user_${Math.random().toString(36).substr(2, 9)}`;
                     localStorage.setItem('ai_toolkit_user_id', guestId);
                     
@@ -1078,7 +1080,7 @@
             }
 
             function autosaveChat() { 
-                const token = sessionStorage.getItem('ai_toolkit_token');
+                const token = localStorage.getItem('ai_toolkit_token'); // Use localStorage for token check
                 if (!token) return; // Only save chats for logged-in users
 
                 const historyToSave = (activeTab === 'ai_chat') ? aiChatHistory : pdfChatHistory; 
@@ -1113,7 +1115,7 @@
             } 
             
             function loadSavedChats() { 
-                const token = sessionStorage.getItem('ai_toolkit_token');
+                const token = localStorage.getItem('ai_toolkit_token'); // Use localStorage for token check
                 if (!token) {
                     ui.savedChatsList.innerHTML = '<p class="text-slate-400">Log in to save and view chats.</p>';
                     return;
@@ -1212,291 +1214,7 @@
                 addMessage(`Uploading and sending to worker...`, 'ai', 'pdf_chat'); 
                 
                 let user_id;
-                const token = sessionStorage.getItem('ai_toolkit_token');
-                if (token) {
-                    const payload = JSON.parse(atob(token.split('.')[1]));
-                    user_id = payload.sub;
-                } else {
-                    user_id = localStorage.getItem('ai_toolkit_user_id');
-                }
-
-                const formData = new FormData(); 
-                formData.append('file', file); 
-                
-                try { 
-                    // CRITICAL FIX: Use absolute URL for upload POST request
-                    const response = await fetch(`${RENDER_API_BASE_URL}/upload/${user_id}`, { method: 'POST', body: formData }); 
-                    if (!response.ok) { 
-                        const errorData = await response.json(); 
-                        throw new Error(errorData.detail || 'Failed to start PDF processing.'); 
-                    } 
-                } catch (error) { 
-                    addMessage(`Error: ${error.message}`, 'ai', 'pdf_chat'); 
-                    setUIState('worker_ready', 'Upload failed.'); 
-                } 
-            } 
-
-            function handleImageFile(file) { 
-                if (!file || !file.type.startsWith('image/')) return; 
-                
-                const reader = new FileReader(); 
-                reader.onload = (event) => { 
-                    uploadedImageB64 = event.target.result.split(',')[1]; 
-                    ui.imagePreviewAI.src = event.target.result; 
-                    ui.imagePreviewContainerAI.style.display = 'block'; 
-                }; 
-                reader.readAsDataURL(file); 
-            } 
-            
-            // --- Event Listeners for UI ---
-            ui.tabChatPDF.addEventListener('click', () => { 
-                activeTab = 'pdf_chat'; 
-                ui.viewChatPDF.style.display = 'grid'; 
-                ui.viewAIChat.style.display = 'none'; 
-                ui.tabChatPDF.classList.add('active'); 
-                ui.tabAIChat.classList.remove('active'); 
-            }); 
-            
-            ui.tabAIChat.addEventListener('click', () => { 
-                activeTab = 'ai_chat'; 
-                ui.viewChatPDF.style.display = 'none'; 
-                ui.viewAIChat.style.display = 'flex'; 
-                ui.tabChatPDF.classList.remove('active'); 
-                ui.tabAIChat.classList.add('active'); 
-            }); 
-            
-            ui.openSidebarButton.addEventListener('click', () => { 
-                loadSavedChats(); 
-                ui.sidebar.classList.remove('-translate-x-full'); 
-            }); 
-            
-            ui.closeSidebarButton.addEventListener('click', () => 
-                ui.sidebar.classList.add('-translate-x-full') 
-            ); 
-            
-            ui.newChatButton.addEventListener('click', () => { 
-                startNewChat(); 
-                ui.sidebar.classList.add('-translate-x-full'); 
-            }); 
-            
-            ui.pdfUploadInput.addEventListener('change', uploadPDF); 
-            
-            ui.imageUploadAI.addEventListener('change', (e) => handleImageFile(e.target.files[0])); 
-            
-            ui.removeImageButtonAI.addEventListener('click', () => { 
-                uploadedImageB64 = null; 
-                ui.imagePreviewContainerAI.style.display = 'none'; 
-                ui.imageUploadAI.value = ''; 
-            }); 
-            
-            ui.messageInputAI.addEventListener('paste', (e) => { 
-                const items = (e.clipboardData || window.clipboardData).items; 
-                for (const item of items) { 
-                    if (item.kind === 'file' && item.type.startsWith('image/')) { 
-                        e.preventDefault(); 
-                        const file = item.getAsFile(); 
-                        handleImageFile(file); 
-                        return; 
-                    } 
-                } 
-            }); 
-            
-            function renderCodeBlock(codeText) {
-                const lines = codeText.trim().split('\n');
-                const langMatch = lines[0].match(/```(\w+)/);
-                const language = langMatch ? langMatch[1] : '';
-                const codeLines = lines.slice(1, lines.length - 1).join('\n');
-                const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const codeHtml = codeLines.split('\n').map(line => `<code>${escapeHtml(line)}</code>`).join('');
-                const lineNumbers = codeLines.split('\n').map((_, index) => index + 1).join('\n');
-                return `
-                    <div class="code-block-container">
-                        ${language ? `<span class="language-tag">${language}</span>` : ''}
-                        <ol>
-                            <li class="line-numbers"><pre>${lineNumbers}</pre></li>
-                            <li class="code-content"><pre>${codeHtml}</pre></li>
-                        </ol>
-                        <button class="copy-button">Copy</button>
-                    </div>
-                `;
-            }
-
-            function renderHistory(history, target = 'pdf_chat') {
-                const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
-                container.innerHTML = '';
-                history.forEach(msg => {
-                    const bubble = document.createElement('div');
-                    bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
-                    if (msg.sender === 'user') {
-                        bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
-                        const textNode = document.createElement('div');
-                        textNode.textContent = msg.text;
-                        bubble.appendChild(textNode);
-                        if (msg.imageB64) {
-                            const img = document.createElement('img');
-                            img.src = `data:image/jpeg;base64,${msg.imageB64}`;
-                            bubble.appendChild(img);
-                        }
-                    } else {
-                        bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
-                        const textNode = document.createElement('div');
-                        let finalHtml = marked.parse(msg.text);
-                        
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = finalHtml;
-                        tempDiv.querySelectorAll('pre').forEach(pre => {
-                            if (pre.querySelector('code')) {
-                                const codeText = pre.textContent;
-                                pre.outerHTML = renderCodeBlock(codeText);
-                            }
-                        });
-                        finalHtml = tempDiv.innerHTML;
-                        
-                        textNode.innerHTML = finalHtml;
-                        bubble.appendChild(textNode);
-                        addCopyButtonsTo(bubble);
-                    }
-                    container.appendChild(bubble);
-                });
-                container.scrollTop = container.scrollHeight;
-            }
-
-            function autosaveChat() { 
-                const token = sessionStorage.getItem('ai_toolkit_token');
-                if (!token) return;
-
-                const historyToSave = (activeTab === 'ai_chat') ? aiChatHistory : pdfChatHistory; 
-                if (historyToSave.length === 0) return; 
-                
-                let chatId = (activeTab === 'ai_chat') ? 
-                sessionStorage.getItem('currentAIChatId') : 
-                sessionStorage.getItem('currentPdfChatId'); 
-                const firstUserMessage = historyToSave.find(m => m.sender === 'user')?.text || 'New Chat'; 
-
-                const chatName = (activeTab === 'pdf_chat' && 
-                currentPDFName) ? `${currentPDFName.replace('.pdf', '')}` : 
-                firstUserMessage.substring(0, 30); 
-                
-                if (!chatId) { 
-                    chatId = `chat_${Date.now()}`; 
-                    if (activeTab === 'ai_chat') sessionStorage.setItem('currentAIChatId', chatId); 
-                    else sessionStorage.setItem('currentPdfChatId', chatId); 
-                } 
-                
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                const username = payload.sub;
-                const storageKey = `${username}_${chatId}`;
-                
-                const chatData = { 
-                    id: chatId, name: chatName, type: activeTab, 
-                    timestamp: new Date().toISOString(), history: historyToSave, 
-                    pdfName: (activeTab === 'pdf_chat') ? currentPDFName : null 
-                }; 
-                
-                localStorage.setItem(storageKey, JSON.stringify(chatData)); 
-            } 
-            
-            function loadSavedChats() { 
-                const token = sessionStorage.getItem('ai_toolkit_token');
-                if (!token) {
-                    ui.savedChatsList.innerHTML = '<p class="text-slate-400">Log in to save and view chats.</p>';
-                    return;
-                }
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                const username = payload.sub;
-
-                ui.sidebarTitle.textContent = activeTab === 'pdf_chat' ? "Saved PDF Chats" : "Saved AI Chats"; 
-                ui.savedChatsList.innerHTML = ''; 
-                const chats = []; 
-                
-                for (let i = 0; i < localStorage.length; i++) { 
-                    const key = localStorage.key(i); 
-                    if (key.startsWith(`${username}_chat_`)) { 
-                        const chat = JSON.parse(localStorage.getItem(key)); 
-                        if (chat.type === activeTab) chats.push(chat); 
-                    } 
-                } 
-                
-                chats.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); 
-                
-                if (chats.length === 0) { 
-                    ui.savedChatsList.innerHTML = '<p class="text-slate-400">No saved chats.</p>'; 
-                } else { 
-                    chats.forEach(chat => { 
-                        const item = document.createElement('div'); 
-                        item.className = 'p-2 bg-slate-700 rounded-md cursor-pointer hover:bg-slate-600 truncate flex justify-between items-center'; 
-                        item.textContent = chat.name; 
-                        
-                        const storageKey = `${username}_${chat.id}`;
-                        item.onclick = () => loadChat(storageKey); 
-                        
-                        const deleteBtn = document.createElement('button'); 
-                        deleteBtn.className = 'text-red-400 hover:text-red-300 ml-2'; 
-                        deleteBtn.innerHTML = '&times;'; 
-                        deleteBtn.onclick = (e) => { 
-                            e.stopPropagation(); 
-                            if (confirm(`Delete "${chat.name}"?`)) { 
-                                localStorage.removeItem(storageKey); 
-                                loadSavedChats(); 
-                            } 
-                        }; 
-                        item.appendChild(deleteBtn); 
-                        ui.savedChatsList.appendChild(item); 
-                    }); 
-                } 
-            } 
-
-            function loadChat(storageKey) { 
-                const chatData = JSON.parse(localStorage.getItem(storageKey)); 
-                if (!chatData) return; 
-                
-                if (chatData.type === 'pdf_chat') { 
-                    pdfChatHistory = chatData.history; 
-                    currentPDFName = chatData.pdfName; 
-                    sessionStorage.setItem('currentPdfChatId', chatData.id); 
-                    renderHistory(pdfChatHistory, 'pdf_chat'); 
-                    ui.pdfTitle.textContent = currentPDFName || 'PDF Preview'; 
-                    ui.pdfViewer.src = ''; 
-                    setUIState('worker_ready', `Loaded chat for '${currentPDFName}'. Re-upload file to continue.`); 
-                    addMessage(`Please re-upload "${currentPDFName}" to continue this conversation.`, 'system', 'pdf_chat'); 
-                } else { 
-                    aiChatHistory = chatData.history; 
-                    sessionStorage.setItem('currentAIChatId', chatData.id); 
-                    renderHistory(aiChatHistory, 'ai_chat'); 
-                    setUIState('worker_ready', 'AI worker connected.'); 
-                } 
-                ui.sidebar.classList.add('-translate-x-full'); 
-            } 
-
-            function startNewChat() { 
-                if (activeTab === 'pdf_chat') { 
-                    pdfChatHistory = []; 
-                    currentPDFName = null; 
-                    sessionStorage.removeItem('currentPdfChatId'); 
-                    ui.chatContainer.innerHTML = ''; 
-                    ui.pdfTitle.textContent = 'PDF Preview'; 
-                    ui.pdfViewer.src = ''; 
-                } else { 
-                    aiChatHistory = []; 
-                    sessionStorage.removeItem('currentAIChatId'); 
-                    ui.chatContainerAI.innerHTML = ''; 
-                } 
-                setUIState('worker_ready', 'AI worker connected.'); 
-            } 
-
-            async function uploadPDF() { 
-                const file = ui.pdfUploadInput.files[0]; 
-                if (!file) return; 
-                
-                startNewChat(); 
-                currentPDFName = file.name; 
-                ui.pdfTitle.textContent = currentPDFName; 
-                ui.pdfViewer.src = URL.createObjectURL(file); 
-                setUIState('processing', `Processing '${file.name}'...`); 
-                addMessage(`Uploading and sending to worker...`, 'ai', 'pdf_chat'); 
-                
-                let user_id;
-                const token = sessionStorage.getItem('ai_toolkit_token');
+                const token = localStorage.getItem('ai_toolkit_token');
                 if (token) {
                     const payload = JSON.parse(atob(token.split('.')[1]));
                     user_id = payload.sub;
