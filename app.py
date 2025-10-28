@@ -1,6 +1,6 @@
 # File: server.py (Final Version with User Authentication & Bug Fix)
 
-import asyncio # <--- THIS IS THE CRITICAL FIX
+import asyncio
 import websockets
 import json
 import base64
@@ -93,6 +93,21 @@ class ConnectionManager:
             await self.local_worker.send_text(message)
         else:
             log_message("!!! ERROR: Worker not connected. Cannot forward message. !!!")
+            # --- FIX #2: Inform the user's browser that the worker is offline ---
+            try:
+                # Extract user_id from the message to send the error to the right client
+                msg_data = json.loads(message)
+                user_id = msg_data.get("user_id")
+                if user_id and user_id in self.web_clients:
+                    error_payload = {
+                        "type": "error",
+                        "user_id": user_id,
+                        "data": "AI worker is not connected. Please ensure the local worker.py script is running and connected."
+                    }
+                    await self.web_clients[user_id].send_text(json.dumps(error_payload))
+            except Exception as e:
+                log_message(f"Could not inform client about worker disconnect: {e}")
+            # -------------------------------------------------------------------
 
     async def forward_to_web_client(self, message: str):
         try:
@@ -192,12 +207,12 @@ async def worker_websocket(websocket: WebSocket):
 async def web_client_websocket(websocket: WebSocket):
     user_id = None
     
-    # CRITICAL FIX: Accept the connection immediately
     await websocket.accept() 
     
     try:
-        # Now safely wait for the authentication message
-        auth_data_str = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+        # --- FIX #1: Increased the authentication timeout from 10 to 30 seconds ---
+        auth_data_str = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+        # -------------------------------------------------------------------------
         auth_data = json.loads(auth_data_str)
         
         token = auth_data.get("token")
@@ -221,7 +236,6 @@ async def web_client_websocket(websocket: WebSocket):
                 await websocket.close(code=1008, reason="Guest user_id missing")
                 return
 
-        # If authentication successful, register the client
         await manager.connect_web_client(websocket, user_id)
         
         while True:
