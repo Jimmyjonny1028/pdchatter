@@ -9,6 +9,7 @@ import bcrypt
 import jwt
 import os
 import pymongo # <-- New import for MongoDB
+import certifi # <-- ADD THIS LINE to import the certificate package
 from typing import Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body
 from fastapi.responses import FileResponse
@@ -29,7 +30,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token lasts for one day
 
 # --- DATABASE CONNECTION (NEW) ---
 try:
-    client = pymongo.MongoClient(MONGO_URI)
+    # --- ADD THIS LINE ---
+    ca = certifi.where() 
+    # --- MODIFY THIS LINE ---
+    client = pymongo.MongoClient(MONGO_URI, tlsCAFile=ca) # <-- Add tlsCAFile=ca
+    
     db = client.get_database("user_db") # This is your database name
     users_collection = db.get_collection("users") # This is your collection name
     print("Successfully connected to MongoDB.")
@@ -204,7 +209,7 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     CHUNK_SIZE = 512 * 1024
     
     await manager.forward_to_worker(json.dumps({ "type": "upload_start", "user_id": user_id, "filename": file.filename }))
-    for i in range(0, len(content_base64), CHK_SIZE):
+    for i in range(0, len(content_base64), CHUNK_SIZE):
         await manager.forward_to_worker(json.dumps({ "type": "upload_chunk", "user_id": user_id, "data": content_base64[i:i + CHUNK_SIZE] }))
     await manager.forward_to_worker(json.dumps({ "type": "upload_end", "user_id": user_id }))
     
@@ -278,3 +283,4 @@ async def web_client_websocket(websocket: WebSocket):
         log_message(f"Error in web client websocket: {e}")
         if user_id and websocket.client_state.name == 'CONNECTED':
             manager.disconnect_web_client(user_id)
+
