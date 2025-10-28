@@ -1,4 +1,4 @@
-# File: app.py (Final version with all fixes)
+# File: app.py (Firebase Firestore Version)
 
 import asyncio
 import websockets
@@ -8,10 +8,8 @@ import datetime
 import bcrypt
 import jwt
 import os
-import pymongo
-import certifi # For SSL certificates
-from pymongo.mongo_client import MongoClient # Import the full client
-from pymongo.server_api import ServerApi # Import ServerApi
+import firebase_admin # <-- Import Firebase
+from firebase_admin import credentials, firestore # <-- Import Firestore components
 from typing import Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body
 from fastapi.responses import FileResponse
@@ -19,63 +17,53 @@ import uvicorn
 
 # --- CONFIGURATION & SECURITY ---
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
-MONGO_URI = os.environ.get("MONGO_URI") # This should be the mongodb+srv:// string
-
-if not MONGO_URI:
-    print("FATAL: MONGO_URI environment variable not set.")
-    # In a real app, you might want to raise an Exception
-    # raise Exception("FATAL: MONGO_URI environment variable not set.")
-
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token lasts for one day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 
 
-# --- DATABASE CONNECTION (FINAL ADJUSTMENT FOR SRV + TLS) ---
+# --- FIREBASE INITIALIZATION ---
 try:
-    ca = certifi.where()
+    # Decode the Base64 encoded service account key from environment variable
+    encoded_key = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
+    if not encoded_key:
+        raise ValueError("FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable not set.")
+        
+    decoded_key = base64.b64decode(encoded_key).decode('utf-8')
+    service_account_info = json.loads(decoded_key)
     
-    # Create a new client and connect to the server
-    client = MongoClient(
-        MONGO_URI,
-        server_api=ServerApi('1'), 
-        tls=True, # Explicitly enable TLS
-        tlsCAFile=ca 
-    )
-    
-    db = client.get_database("user_db") 
-    users_collection = db.get_collection("users")
-    
-    # Send a ping to confirm a successful connection
-    client.admin.command('ping')
-    print("Pinged your deployment. You successfully connected to MongoDB!")
+    cred = credentials.Certificate(service_account_info)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client() # Get Firestore client
+    users_collection = db.collection('users') # Reference to the 'users' collection
+    print("Successfully connected to Firebase Firestore.")
 
 except Exception as e:
-    print(f"FATAL: Could not connect to MongoDB. Error: {e}")
+    print(f"FATAL: Could not initialize Firebase Admin SDK. Error: {e}")
 
 app = FastAPI()
 
-# --- USER MANAGEMENT HELPERS ---
+# --- USER MANAGEMENT HELPERS (UPDATED FOR FIRESTORE) ---
 def load_users():
-    """Loads users from the MongoDB collection into a dictionary."""
-    users_from_db = users_collection.find()
-    users_data = {user["username"]: user for user in users_from_db}
+    """Loads users from the Firestore collection into a dictionary."""
+    users_data = {}
+    docs = users_collection.stream() # Get all documents in the collection
+    for doc in docs:
+        user = doc.to_dict()
+        users_data[doc.id] = user 
     return users_data
 
 def save_users(users_data):
-    """Saves a new or updated user's data to the MongoDB collection."""
+    """Saves a new user's data to the Firestore collection."""
     if not users_data:
         return
-    
+        
     username_to_save = list(users_data.keys())[-1]
     user_details = users_data[username_to_save]
     
     try:
-        users_collection.update_one(
-            {"username": username_to_save}, 
-            {"$set": user_details}, 
-            upsert=True
-        )
+        # In Firestore, we set the document ID explicitly to be the username
+        users_collection.document(username_to_save).set(user_details)
     except Exception as e:
-        log_message(f"Error saving user to MongoDB: {e}")
+        log_message(f"Error saving user to Firestore: {e}")
 
 def get_password_hash(password):
     """Hashes a password for storing."""
@@ -83,7 +71,8 @@ def get_password_hash(password):
 
 def verify_password(plain_password, hashed_password):
     """Checks a plain password against a hashed one."""
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    hashed_bytes = hashed_password.encode('utf-8') if isinstance(hashed_password, str) else hashed_password
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_bytes)
 
 # --- END USER MANAGEMENT ---
 
@@ -154,7 +143,7 @@ manager = ConnectionManager()
 
 @app.get("/")
 async def get_homepage():
-    return FileResponse('index.html')
+    return FileResponse('index.html') 
 
 @app.get("/status")
 async def get_status():
@@ -163,35 +152,48 @@ async def get_status():
 
 @app.post("/signup")
 async def signup(user_data: dict = Body(...)):
-    """Handles user registration."""
+    """Handles user registration using Firestore."""
     username = user_data.get("username")
     password = user_data.get("password")
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
     
-    users = load_users()
-    if username in users:
+    # Check if user exists using Firestore
+    user_ref = users_collection.document(username)
+    if user_ref.get().exists:
         raise HTTPException(status_code=400, detail="Username already exists.")
     
     hashed_password = get_password_hash(password)
     
-    users[username] = {"username": username, "password": hashed_password}
-    save_users(users)
+    # Prepare data for Firestore
+    new_user_data = {"username": username, "password": hashed_password}
     
-    log_message(f"New user signed up: {username}")
-    return {"message": "User created successfully."}
+    try:
+        users_collection.document(username).set(new_user_data)
+        log_message(f"New user signed up: {username}")
+        return {"message": "User created successfully."}
+    except Exception as e:
+        log_message(f"Error during signup: {e}")
+        raise HTTPException(status_code=500, detail="Could not create user account.")
 
 @app.post("/login")
 async def login(user_data: dict = Body(...)):
-    """Handles user login and issues a JWT."""
+    """Handles user login using Firestore."""
     username = user_data.get("username")
     password = user_data.get("password")
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
 
-    users = load_users() 
-    user = users.get(username)
-    if not user or not verify_password(password, user["password"]):
+    # Get user from Firestore
+    user_ref = users_collection.document(username)
+    user_doc = user_ref.get()
+
+    if not user_doc.exists:
+        raise HTTPException(status_code=401, detail="Incorrect username or password.")
+        
+    user_data_from_db = user_doc.to_dict()
+    
+    if not verify_password(password, user_data_from_db.get("password")):
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
         
     access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
