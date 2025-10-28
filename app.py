@@ -17,7 +17,7 @@ import uvicorn
 
 # --- CONFIGURATION & SECURITY ---
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
-ALGORITHM = "HS26" # Standard algorithm for JWT
+ALGORITHM = "HS256" # <-- FIX: Correct JWT Algorithm name
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token lasts for one day
 
 # --- FIREBASE INITIALIZATION ---
@@ -40,6 +40,7 @@ except Exception as e:
     print(f"FATAL: Could not initialize Firebase Admin SDK. Error: {e}")
 
 # --- HELPER FUNCTION FOR JWT TOKEN CREATION ---
+# <<< FIX: Added the missing create_access_token function back >>>
 def create_access_token(data: dict, expires_delta: datetime.timedelta | None = None):
     """Creates a new JWT access token."""
     to_encode = data.copy()
