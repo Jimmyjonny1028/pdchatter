@@ -1,4 +1,4 @@
-# File: app.py (Final version with MongoDB and connection fixes)
+# File: app.py (Final version with all fixes)
 
 import asyncio
 import websockets
@@ -8,17 +8,18 @@ import datetime
 import bcrypt
 import jwt
 import os
-import pymongo # <-- New import for MongoDB
-import certifi # <-- ADD THIS LINE to import the certificate package
+import pymongo
+import certifi # For SSL certificates
+from pymongo.mongo_client import MongoClient # Import the full client
+from pymongo.server_api import ServerApi # Import ServerApi
 from typing import Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body
 from fastapi.responses import FileResponse
 import uvicorn
 
 # --- CONFIGURATION & SECURITY ---
-# These keys are loaded from Render's Environment Variables
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
-MONGO_URI = os.environ.get("MONGO_URI")
+MONGO_URI = os.environ.get("MONGO_URI") # This should be the mongodb+srv:// string
 
 if not MONGO_URI:
     print("FATAL: MONGO_URI environment variable not set.")
@@ -28,22 +29,31 @@ if not MONGO_URI:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token lasts for one day
 
-# --- DATABASE CONNECTION (NEW) ---
+# --- DATABASE CONNECTION (FINAL ADJUSTMENT FOR SRV + TLS) ---
 try:
-    # --- ADD THIS LINE ---
-    ca = certifi.where() 
-    # --- MODIFY THIS LINE ---
-    client = pymongo.MongoClient(MONGO_URI, tlsCAFile=ca) # <-- Add tlsCAFile=ca
+    ca = certifi.where()
     
-    db = client.get_database("user_db") # This is your database name
-    users_collection = db.get_collection("users") # This is your collection name
-    print("Successfully connected to MongoDB.")
+    # Create a new client and connect to the server
+    client = MongoClient(
+        MONGO_URI,
+        server_api=ServerApi('1'), 
+        tls=True, # Explicitly enable TLS
+        tlsCAFile=ca 
+    )
+    
+    db = client.get_database("user_db") 
+    users_collection = db.get_collection("users")
+    
+    # Send a ping to confirm a successful connection
+    client.admin.command('ping')
+    print("Pinged your deployment. You successfully connected to MongoDB!")
+
 except Exception as e:
     print(f"FATAL: Could not connect to MongoDB. Error: {e}")
 
 app = FastAPI()
 
-# --- USER MANAGEMENT HELPERS (UPDATED FOR MONGODB) ---
+# --- USER MANAGEMENT HELPERS ---
 def load_users():
     """Loads users from the MongoDB collection into a dictionary."""
     users_from_db = users_collection.find()
@@ -55,13 +65,9 @@ def save_users(users_data):
     if not users_data:
         return
     
-    # This logic assumes we are saving the most recently added user
-    # This is fine for the signup endpoint which adds one user at a time
     username_to_save = list(users_data.keys())[-1]
     user_details = users_data[username_to_save]
     
-    # Use update_one with upsert=True. This will update the user if they exist,
-    # or insert a new document if they don't.
     try:
         users_collection.update_one(
             {"username": username_to_save}, 
@@ -115,7 +121,6 @@ class ConnectionManager:
             await self.local_worker.send_text(message)
         else:
             log_message("!!! ERROR: Worker not connected. Cannot forward message. !!!")
-            # --- FIX: Inform the user's browser that the worker is offline ---
             try:
                 msg_data = json.loads(message)
                 user_id = msg_data.get("user_id")
@@ -128,7 +133,6 @@ class ConnectionManager:
                     await self.web_clients[user_id].send_text(json.dumps(error_payload))
             except Exception as e:
                 log_message(f"Could not inform client about worker disconnect: {e}")
-            # -----------------------------------------------------------------
 
     async def forward_to_web_client(self, message: str):
         try:
@@ -171,7 +175,6 @@ async def signup(user_data: dict = Body(...)):
     
     hashed_password = get_password_hash(password)
     
-    # Add new user to dictionary and save to DB
     users[username] = {"username": username, "password": hashed_password}
     save_users(users)
     
@@ -186,7 +189,7 @@ async def login(user_data: dict = Body(...)):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
 
-    users = load_users() # Load from MongoDB
+    users = load_users() 
     user = users.get(username)
     if not user or not verify_password(password, user["password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
@@ -234,9 +237,7 @@ async def web_client_websocket(websocket: WebSocket):
     await websocket.accept() 
     
     try:
-        # --- FIX: Increased the authentication timeout from 10 to 30 seconds ---
         auth_data_str = await asyncio.wait_for(websocket.receive_text(), timeout=30)
-        # ---------------------------------------------------------------------
         auth_data = json.loads(auth_data_str)
         
         token = auth_data.get("token")
@@ -283,4 +284,3 @@ async def web_client_websocket(websocket: WebSocket):
         log_message(f"Error in web client websocket: {e}")
         if user_id and websocket.client_state.name == 'CONNECTED':
             manager.disconnect_web_client(user_id)
-
