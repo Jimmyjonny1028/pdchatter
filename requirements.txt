@@ -3,7 +3,5 @@ uvicorn
 python-multipart
 bcrypt
 pyjwt
-pymongo
 websockets
-certifi
-dnspython
+firebase-admin
