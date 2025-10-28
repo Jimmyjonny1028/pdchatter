@@ -1,4 +1,4 @@
-# File: app.py (Firebase Firestore Version - With Cloud Chat Storage)
+# File: app.py (Firebase Firestore Version - With Cloud Chat Storage & Auth Success Fix)
 
 import asyncio
 import websockets
@@ -10,11 +10,11 @@ import jwt
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore
-from typing import Dict, List, Optional # <<< NEW: Added List and Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Depends, Request # <<< NEW: Added Depends, Request
-from fastapi.security import OAuth2PasswordBearer # <<< NEW: For JWT dependency
+from typing import Dict, List, Optional 
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Depends, Request 
+from fastapi.security import OAuth2PasswordBearer 
 from fastapi.responses import FileResponse
-from pydantic import BaseModel # <<< NEW: For data models
+from pydantic import BaseModel 
 import uvicorn
 
 # --- CONFIGURATION & SECURITY ---
@@ -35,7 +35,7 @@ try:
     firebase_admin.initialize_app(cred)
     db = firestore.client() 
     users_collection = db.collection('users') 
-    chats_collection = db.collection('chats') # <<< NEW: Collection for chats
+    chats_collection = db.collection('chats') 
     print("Successfully connected to Firebase Firestore.")
 
 except Exception as e:
@@ -52,8 +52,8 @@ def create_access_token(data: dict, expires_delta: datetime.timedelta | None = N
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# <<< NEW: Dependency to get current user from JWT >>>
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") # Points to your login route
+# --- Dependency to get current user from JWT ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
@@ -66,18 +66,15 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
-        # You could also check if the user still exists in the DB here if needed
         return username
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired", headers={"WWW-Authenticate": "Bearer"})
     except jwt.InvalidTokenError:
         raise credentials_exception
-# <<< END NEW SECTION >>>
 
 app = FastAPI()
 
 # --- USER MANAGEMENT HELPERS ---
-# (get_password_hash and verify_password remain the same)
 def get_password_hash(password):
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
@@ -142,6 +139,20 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# --- Pydantic models for Chat data ---
+class ChatMessage(BaseModel):
+    sender: str
+    text: str
+    imageB64: Optional[str] = None 
+
+class ChatData(BaseModel):
+    id: str 
+    name: str
+    type: str 
+    timestamp: str 
+    history: List[ChatMessage]
+    pdfName: Optional[str] = None
+
 # --- HTTP ENDPOINTS ---
 
 @app.get("/")
@@ -186,7 +197,6 @@ async def login(user_data: dict = Body(...)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/upload/{user_id}")
-# Note: This upload might need JWT protection too depending on requirements
 async def http_upload_pdf(user_id: str, file: UploadFile = File(...)): 
     if not manager.local_worker: raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
     content = await file.read(); content_base64 = base64.b64encode(content).decode('utf-8')
@@ -197,30 +207,12 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     await manager.forward_to_worker(json.dumps({ "type": "upload_end", "user_id": user_id }))
     return {"message": "File sent to worker for processing."}
 
-# <<< NEW: Pydantic models for Chat data >>>
-class ChatMessage(BaseModel):
-    sender: str
-    text: str
-    imageB64: Optional[str] = None # Assuming image handling comes later
-
-class ChatData(BaseModel):
-    id: str # Client generates this (e.g., chat_timestamp)
-    name: str
-    type: str # 'pdf_chat' or 'ai_chat'
-    timestamp: str # ISO format string
-    history: List[ChatMessage]
-    pdfName: Optional[str] = None
-
-# <<< NEW: Chat History API Endpoints >>>
+# --- Chat History API Endpoints ---
 @app.post("/chats", status_code=201)
 async def save_chat(chat_data: ChatData, current_user: str = Depends(get_current_user)):
-    """Saves or updates a chat history for the logged-in user."""
     chat_id = chat_data.id
-    # Store user ID along with chat data for ownership check
-    chat_dict = chat_data.dict()
-    chat_dict["userId"] = current_user 
+    chat_dict = chat_data.dict(); chat_dict["userId"] = current_user 
     try:
-        # Use chat_id as the document ID, associate with user
         chats_collection.document(f"{current_user}_{chat_id}").set(chat_dict)
         log_message(f"Chat saved/updated for user '{current_user}', chat ID: {chat_id}")
         return {"message": "Chat saved successfully", "chatId": chat_id}
@@ -230,20 +222,15 @@ async def save_chat(chat_data: ChatData, current_user: str = Depends(get_current
 
 @app.get("/chats")
 async def list_chats(current_user: str = Depends(get_current_user)):
-    """Lists metadata (id, name, timestamp) of chats for the logged-in user."""
     try:
-        # Query chats where 'userId' field matches the current user
         user_chats_query = chats_collection.where('userId', '==', current_user).order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
-        
         chat_list = []
         for doc in user_chats_query:
             chat_data = doc.to_dict()
             chat_list.append({
-                "id": chat_data.get("id"),
-                "name": chat_data.get("name"),
-                "timestamp": chat_data.get("timestamp"),
-                "type": chat_data.get("type"),
-                "pdfName": chat_data.get("pdfName") # Include pdfName if available
+                "id": chat_data.get("id"), "name": chat_data.get("name"),
+                "timestamp": chat_data.get("timestamp"), "type": chat_data.get("type"),
+                "pdfName": chat_data.get("pdfName") 
             })
         log_message(f"Retrieved {len(chat_list)} chats for user '{current_user}'")
         return chat_list
@@ -253,65 +240,49 @@ async def list_chats(current_user: str = Depends(get_current_user)):
 
 @app.get("/chats/{chat_id}")
 async def get_chat_history(chat_id: str, current_user: str = Depends(get_current_user)):
-    """Gets the full history of a specific chat for the logged-in user."""
-    doc_id = f"{current_user}_{chat_id}" # Use the composite ID
+    doc_id = f"{current_user}_{chat_id}" 
     try:
-        chat_doc_ref = chats_collection.document(doc_id)
-        chat_doc = chat_doc_ref.get()
+        chat_doc_ref = chats_collection.document(doc_id); chat_doc = chat_doc_ref.get()
         if chat_doc.exists:
             log_message(f"Retrieved chat history for user '{current_user}', chat ID: {chat_id}")
             return chat_doc.to_dict()
         else:
-            # Check if maybe the client sent the raw chat_id without prefix
-            # This is less ideal but provides fallback
-            legacy_doc_ref = chats_collection.document(chat_id)
-            legacy_doc = legacy_doc_ref.get()
-            if legacy_doc.exists and legacy_doc.to_dict().get("userId") == current_user:
-                 log_message(f"Retrieved chat history (legacy ID) for user '{current_user}', chat ID: {chat_id}")
-                 return legacy_doc.to_dict()
-                 
-            log_message(f"Chat not found or access denied for user '{current_user}', chat ID: {chat_id}")
-            raise HTTPException(status_code=404, detail="Chat not found or you don't have permission.")
+             # Fallback for potential legacy IDs (less ideal)
+             legacy_doc_ref = chats_collection.document(chat_id); legacy_doc = legacy_doc_ref.get()
+             if legacy_doc.exists and legacy_doc.to_dict().get("userId") == current_user:
+                  log_message(f"Retrieved chat history (legacy ID) for user '{current_user}', chat ID: {chat_id}")
+                  return legacy_doc.to_dict()
+             log_message(f"Chat not found or access denied for user '{current_user}', chat ID: {chat_id}")
+             raise HTTPException(status_code=404, detail="Chat not found or you don't have permission.")
     except Exception as e:
         log_message(f"Error getting chat history for user '{current_user}', chat ID: {chat_id}: {e}")
         raise HTTPException(status_code=500, detail="Could not retrieve chat history.")
 
 @app.delete("/chats/{chat_id}", status_code=204)
 async def delete_chat(chat_id: str, current_user: str = Depends(get_current_user)):
-    """Deletes a specific chat for the logged-in user."""
     doc_id = f"{current_user}_{chat_id}"
     try:
-        chat_doc_ref = chats_collection.document(doc_id)
-        chat_doc = chat_doc_ref.get()
+        chat_doc_ref = chats_collection.document(doc_id); chat_doc = chat_doc_ref.get()
         if chat_doc.exists:
-             # Ensure the userId matches - redundant but safe
             if chat_doc.to_dict().get("userId") == current_user:
                 chat_doc_ref.delete()
                 log_message(f"Deleted chat for user '{current_user}', chat ID: {chat_id}")
-                return # FastAPI handles 204 No Content response
-            else:
-                 # This case should ideally not happen due to doc_id structure
-                 raise HTTPException(status_code=403, detail="Permission denied.")
+                return 
+            else: raise HTTPException(status_code=403, detail="Permission denied.")
         else:
-             # Try legacy ID delete
-             legacy_doc_ref = chats_collection.document(chat_id)
-             legacy_doc = legacy_doc_ref.get()
+             # Fallback for legacy IDs
+             legacy_doc_ref = chats_collection.document(chat_id); legacy_doc = legacy_doc_ref.get()
              if legacy_doc.exists and legacy_doc.to_dict().get("userId") == current_user:
                   legacy_doc_ref.delete()
                   log_message(f"Deleted chat (legacy ID) for user '{current_user}', chat ID: {chat_id}")
                   return
-             
-             log_message(f"Attempt to delete non-existent or unauthorized chat by user '{current_user}', chat ID: {chat_id}")
+             log_message(f"Attempt to delete non-existent/unauthorized chat by user '{current_user}', chat ID: {chat_id}")
              raise HTTPException(status_code=404, detail="Chat not found or you don't have permission.")
-
     except Exception as e:
         log_message(f"Error deleting chat for user '{current_user}', chat ID: {chat_id}: {e}")
         raise HTTPException(status_code=500, detail="Could not delete chat.")
 
-# <<< END NEW SECTION >>>
-
 # --- WEBSOCKET ENDPOINTS ---
-# (Websocket endpoints remain the same)
 @app.websocket("/ws/worker")
 async def worker_websocket(websocket: WebSocket):
     await manager.connect_local_worker(websocket)
@@ -335,11 +306,18 @@ async def web_client_websocket(websocket: WebSocket):
         else: # Guest Mode
             user_id = auth_data.get("user_id")
             if not user_id: await websocket.close(code=1008, reason="Guest user_id missing"); return
+        
+        # Connect the client *before* sending auth_success
         await manager.connect_web_client(websocket, user_id)
+        
+        # <<< FIX: Send auth_success message back to the client >>>
+        await websocket.send_text(json.dumps({"type": "auth_success", "user_id": user_id}))
+        
         while True:
             data_text = await websocket.receive_text(); data = json.loads(data_text)
             if data.get("type") == "ping": continue
             data['user_id'] = user_id; await manager.forward_to_worker(json.dumps(data))
+            
     except WebSocketDisconnect:
         if user_id: manager.disconnect_web_client(user_id)
     except asyncio.TimeoutError:
