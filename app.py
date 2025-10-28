@@ -1,4 +1,4 @@
-# File: app.py (Firebase Firestore Version)
+# File: app.py (Firebase Firestore Version - Fixed NameError)
 
 import asyncio
 import websockets
@@ -17,8 +17,8 @@ import uvicorn
 
 # --- CONFIGURATION & SECURITY ---
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 
+ALGORITHM = "HS26" # Standard algorithm for JWT
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token lasts for one day
 
 # --- FIREBASE INITIALIZATION ---
 try:
@@ -38,6 +38,20 @@ try:
 
 except Exception as e:
     print(f"FATAL: Could not initialize Firebase Admin SDK. Error: {e}")
+
+# --- HELPER FUNCTION FOR JWT TOKEN CREATION ---
+def create_access_token(data: dict, expires_delta: datetime.timedelta | None = None):
+    """Creates a new JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        # Use timezone-aware datetime for expiration
+        expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
+    else:
+        # Default expiration time if none is provided
+        expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) # Use configured expiry
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 app = FastAPI()
 
@@ -60,7 +74,6 @@ def save_users(users_data):
     user_details = users_data[username_to_save]
     
     try:
-        # In Firestore, we set the document ID explicitly to be the username
         users_collection.document(username_to_save).set(user_details)
     except Exception as e:
         log_message(f"Error saving user to Firestore: {e}")
@@ -158,14 +171,11 @@ async def signup(user_data: dict = Body(...)):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
     
-    # Check if user exists using Firestore
     user_ref = users_collection.document(username)
     if user_ref.get().exists:
         raise HTTPException(status_code=400, detail="Username already exists.")
     
     hashed_password = get_password_hash(password)
-    
-    # Prepare data for Firestore
     new_user_data = {"username": username, "password": hashed_password}
     
     try:
@@ -184,7 +194,6 @@ async def login(user_data: dict = Body(...)):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
 
-    # Get user from Firestore
     user_ref = users_collection.document(username)
     user_doc = user_ref.get()
 
@@ -193,9 +202,12 @@ async def login(user_data: dict = Body(...)):
         
     user_data_from_db = user_doc.to_dict()
     
-    if not verify_password(password, user_data_from_db.get("password")):
+    # Check if password exists in the fetched data before verifying
+    stored_password_hash = user_data_from_db.get("password")
+    if not stored_password_hash or not verify_password(password, stored_password_hash):
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
         
+    # Use the configured expiration time
     access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": username}, expires_delta=access_token_expires
@@ -246,6 +258,7 @@ async def web_client_websocket(websocket: WebSocket):
         
         if token:
             try:
+                # Use timezone aware datetime for validation if needed, PyJWT handles this typically
                 payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
                 user_id = payload.get("sub")
                 if user_id is None:
@@ -286,3 +299,4 @@ async def web_client_websocket(websocket: WebSocket):
         log_message(f"Error in web client websocket: {e}")
         if user_id and websocket.client_state.name == 'CONNECTED':
             manager.disconnect_web_client(user_id)
+
