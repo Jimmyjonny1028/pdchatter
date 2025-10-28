@@ -1,4 +1,4 @@
-# File: server.py (Final Version with User Authentication & Bug Fix)
+# File: app.py (Final version with MongoDB and connection fixes)
 
 import asyncio
 import websockets
@@ -8,35 +8,63 @@ import datetime
 import bcrypt
 import jwt
 import os
+import pymongo # <-- New import for MongoDB
 from typing import Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body
 from fastapi.responses import FileResponse
 import uvicorn
 
 # --- CONFIGURATION & SECURITY ---
+# These keys are loaded from Render's Environment Variables
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
+MONGO_URI = os.environ.get("MONGO_URI")
+
+if not MONGO_URI:
+    print("FATAL: MONGO_URI environment variable not set.")
+    # In a real app, you might want to raise an Exception
+    # raise Exception("FATAL: MONGO_URI environment variable not set.")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token lasts for one day
 
-USERS_DB_FILE = "users.json" # This file will store user credentials.
+# --- DATABASE CONNECTION (NEW) ---
+try:
+    client = pymongo.MongoClient(MONGO_URI)
+    db = client.get_database("user_db") # This is your database name
+    users_collection = db.get_collection("users") # This is your collection name
+    print("Successfully connected to MongoDB.")
+except Exception as e:
+    print(f"FATAL: Could not connect to MongoDB. Error: {e}")
 
 app = FastAPI()
 
-# --- USER MANAGEMENT HELPERS ---
+# --- USER MANAGEMENT HELPERS (UPDATED FOR MONGODB) ---
 def load_users():
-    """Loads users from the JSON file."""
-    if not os.path.exists(USERS_DB_FILE):
-        return {}
-    with open(USERS_DB_FILE, "r") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            return {} # Return empty dict if file is empty or corrupt
+    """Loads users from the MongoDB collection into a dictionary."""
+    users_from_db = users_collection.find()
+    users_data = {user["username"]: user for user in users_from_db}
+    return users_data
 
 def save_users(users_data):
-    """Saves the users dictionary to the JSON file."""
-    with open(USERS_DB_FILE, "w") as f:
-        json.dump(users_data, f, indent=4)
+    """Saves a new or updated user's data to the MongoDB collection."""
+    if not users_data:
+        return
+    
+    # This logic assumes we are saving the most recently added user
+    # This is fine for the signup endpoint which adds one user at a time
+    username_to_save = list(users_data.keys())[-1]
+    user_details = users_data[username_to_save]
+    
+    # Use update_one with upsert=True. This will update the user if they exist,
+    # or insert a new document if they don't.
+    try:
+        users_collection.update_one(
+            {"username": username_to_save}, 
+            {"$set": user_details}, 
+            upsert=True
+        )
+    except Exception as e:
+        log_message(f"Error saving user to MongoDB: {e}")
 
 def get_password_hash(password):
     """Hashes a password for storing."""
@@ -45,17 +73,6 @@ def get_password_hash(password):
 def verify_password(plain_password, hashed_password):
     """Checks a plain password against a hashed one."""
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
-
-def create_access_token(data: dict, expires_delta: datetime.timedelta | None = None):
-    """Creates a new JWT access token."""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
 
 # --- END USER MANAGEMENT ---
 
@@ -93,9 +110,8 @@ class ConnectionManager:
             await self.local_worker.send_text(message)
         else:
             log_message("!!! ERROR: Worker not connected. Cannot forward message. !!!")
-            # --- FIX #2: Inform the user's browser that the worker is offline ---
+            # --- FIX: Inform the user's browser that the worker is offline ---
             try:
-                # Extract user_id from the message to send the error to the right client
                 msg_data = json.loads(message)
                 user_id = msg_data.get("user_id")
                 if user_id and user_id in self.web_clients:
@@ -107,7 +123,7 @@ class ConnectionManager:
                     await self.web_clients[user_id].send_text(json.dumps(error_payload))
             except Exception as e:
                 log_message(f"Could not inform client about worker disconnect: {e}")
-            # -------------------------------------------------------------------
+            # -----------------------------------------------------------------
 
     async def forward_to_web_client(self, message: str):
         try:
@@ -149,8 +165,11 @@ async def signup(user_data: dict = Body(...)):
         raise HTTPException(status_code=400, detail="Username already exists.")
     
     hashed_password = get_password_hash(password)
-    users[username] = {"password": hashed_password}
+    
+    # Add new user to dictionary and save to DB
+    users[username] = {"username": username, "password": hashed_password}
     save_users(users)
+    
     log_message(f"New user signed up: {username}")
     return {"message": "User created successfully."}
 
@@ -162,7 +181,7 @@ async def login(user_data: dict = Body(...)):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
 
-    users = load_users()
+    users = load_users() # Load from MongoDB
     user = users.get(username)
     if not user or not verify_password(password, user["password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
@@ -185,7 +204,7 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     CHUNK_SIZE = 512 * 1024
     
     await manager.forward_to_worker(json.dumps({ "type": "upload_start", "user_id": user_id, "filename": file.filename }))
-    for i in range(0, len(content_base64), CHUNK_SIZE):
+    for i in range(0, len(content_base64), CHK_SIZE):
         await manager.forward_to_worker(json.dumps({ "type": "upload_chunk", "user_id": user_id, "data": content_base64[i:i + CHUNK_SIZE] }))
     await manager.forward_to_worker(json.dumps({ "type": "upload_end", "user_id": user_id }))
     
@@ -210,9 +229,9 @@ async def web_client_websocket(websocket: WebSocket):
     await websocket.accept() 
     
     try:
-        # --- FIX #1: Increased the authentication timeout from 10 to 30 seconds ---
+        # --- FIX: Increased the authentication timeout from 10 to 30 seconds ---
         auth_data_str = await asyncio.wait_for(websocket.receive_text(), timeout=30)
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         auth_data = json.loads(auth_data_str)
         
         token = auth_data.get("token")
