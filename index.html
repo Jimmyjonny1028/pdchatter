@@ -714,52 +714,80 @@
                  ui.imagePreviewContainerAI.style.display = 'none'; ui.imageUploadAI.value = ''; uploadedImageB64 = null;
             }
 
+            // --- Updated handleServerMessage ---
             function handleServerMessage(message) {
-                 const targetKey = message.target || activeTab;
+                 const targetKey = message.target || activeTab; // Use message target, fallback to activeTab
                  const isThought = targetKey.endsWith('_thoughts');
                  const mainTarget = isThought ? targetKey.replace('_thoughts', '_chat') : targetKey;
 
                 switch (message.type) {
                     case 'status':
-                        removeThinkingBubble();
-                        addMessage(message.data, 'system', mainTarget);
+                        console.log("Received Status:", message.data); // <-- ADDED LOG
+                        removeThinkingBubble(); // Remove thinking bubble on any status update
+                        addMessage(message.data, 'system', mainTarget); // Add status as system message
+                        // Specifically check for the "Ready for questions" message
                         if (message.data.includes("Ready for questions") && activeTab === 'pdf_chat') {
+                             console.log("Setting UI state to ready_to_chat based on status message"); // <-- ADDED LOG
                              setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
-                        } else if (!message.data.includes("Processing")) {
-                            // Check WebSocket state before assuming worker is ready
-                            if (socket && socket.readyState === WebSocket.OPEN) {
-                                setUIState('worker_ready', 'AI worker connected.');
-                            }
+                        }
+                        // Avoid resetting to 'worker_ready' if we just set it to 'ready_to_chat'
+                        else if (!message.data.includes("Processing") && !(message.data.includes("Ready for questions") && activeTab === 'pdf_chat')) {
+                             // Only reset if it's not a processing or the specific "Ready" message
+                             if (socket && socket.readyState === WebSocket.OPEN) {
+                                 // Check current state to avoid unnecessary updates
+                                 const currentState = ui.status.textContent || '';
+                                 if (!currentState.includes('Ready:') && !currentState.includes('worker connected')) {
+                                      console.log("Setting UI state to worker_ready for general status"); // <-- ADDED LOG
+                                      setUIState('worker_ready', 'AI worker connected.');
+                                 }
+                             }
                         }
                         break;
                     case 'answer_chunk':
+                        // If it's not a thought and the stream isn't active yet, remove thinking bubble
                         if (!isThought && !streamingState[targetKey]?.active) { removeThinkingBubble(); }
+                        // Initialize stream state if it's the first chunk
                         if (!streamingState[targetKey]?.active) {
                             streamingState[targetKey] = { active: true, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false };
                             if (isThought) {
-                                const thoughtElements = addMessage('', 'ai', targetKey);
-                                Object.assign(streamingState[targetKey], thoughtElements);
+                                const thoughtElements = addMessage('', 'ai', targetKey); // Create thought bubble elements
+                                Object.assign(streamingState[targetKey], thoughtElements); // Store elements in state
                             }
+                            // Start rendering interval if not already running
                             if (!renderInterval) { renderInterval = setInterval(renderCharacters, RENDER_SPEED); }
                         }
+                        // Append data to buffer if stream state exists
                         if (streamingState[targetKey]) { streamingState[targetKey].textBuffer += message.data; }
                         break;
                     case 'answer_end':
+                         // Mark stream as ended if state exists
                          if (streamingState[targetKey]) {
                             streamingState[targetKey].ended = true;
+                            // Update thoughts summary text if applicable
                             if (isThought && streamingState[targetKey].summary) { streamingState[targetKey].summary.textContent = 'View Thinking Process (Finished)'; }
                          } else { console.warn(`Received answer_end for inactive stream: ${targetKey}`); }
                         break;
                     case 'error':
-                        finalizeStream(mainTarget, true);
-                        showRetryButton(mainTarget, message.data || "An unknown error occurred.");
-                        cleanupStreaming();
-                        if (currentPDFName && activeTab === 'pdf_chat') { setUIState('ready_to_chat', `Ready: ${currentPDFName}`); }
-                        else if (socket && socket.readyState === WebSocket.OPEN) { setUIState('worker_ready', 'AI worker connected.'); }
-                        else { setUIState('error', 'Connection error occurred.'); }
+                        console.error("Received error message:", message.data); // Log error
+                        finalizeStream(mainTarget, true); // Finalize stream as error
+                        showRetryButton(mainTarget, message.data || "An unknown error occurred."); // Show retry button
+                        cleanupStreaming(); // Cleanup all streams on error
+                        // Reset UI state based on connection, but prioritize showing the error
+                        if (socket && socket.readyState === WebSocket.OPEN) {
+                            if (currentPDFName && activeTab === 'pdf_chat') {
+                                // Keep 'Ready' status if PDF was loaded, despite error in response
+                                setUIState('ready_to_chat', `Ready: ${currentPDFName} (Error in response)`);
+                            } else {
+                                setUIState('worker_ready', 'AI worker connected (Error in response).');
+                            }
+                        } else {
+                             setUIState('error', 'Connection error occurred.');
+                        }
                         break;
-                    case 'pong': break;
-                    default: console.warn("⚠️ Unknown message type:", message.type, message); removeThinkingBubble();
+                    case 'pong': break; // Ignore pongs
+                    default:
+                         console.warn("⚠️ Unknown message type:", message.type, message);
+                         removeThinkingBubble(); // Remove thinking bubble for unknown types
                 }
             }
 
@@ -898,10 +926,17 @@
                  if (mainStreamInactive && thoughtStreamInactive && !isError) {
                      // Only reset to 'ready' if both streams for the active tab are done and no error occurred
                      console.log(`Both streams for ${activeTab} finished. Resetting UI state.`);
-                     if (currentPDFName && activeTab === 'pdf_chat') {
-                         setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                     // *** ADD CHECK: Only reset if not currently processing a PDF ***
+                     const currentStatusText = ui.status.textContent || '';
+                     if (!currentStatusText.includes('Processing')) {
+                         console.log("Resetting UI state as no PDF processing is active.");
+                         if (currentPDFName && activeTab === 'pdf_chat') {
+                             setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                         } else {
+                             setUIState('worker_ready', 'AI worker connected.');
+                         }
                      } else {
-                         setUIState('worker_ready', 'AI worker connected.');
+                         console.log("Streams finished, but PDF processing is active. Not resetting UI state yet.");
                      }
                  } else if (isError) {
                      // If an error occurred, reset state based on connection status (already done in handleServerMessage error case)
@@ -1454,4 +1489,7 @@
     </script>
 </body>
 </html>
+" selected code.
+
+make it so that the app.py code is updated to save chats to firebase not the local storage
 
