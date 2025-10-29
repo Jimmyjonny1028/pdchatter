@@ -1,4 +1,4 @@
-# File: app.py (Firebase Firestore Version - With Cloud Chat Storage & Auth Success Fix)
+# File: app.py (Firebase Firestore Version - Worker Authentication Added)
 
 import asyncio
 import websockets
@@ -10,36 +10,47 @@ import jwt
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore
-from typing import Dict, List, Optional 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Depends, Request 
-from fastapi.security import OAuth2PasswordBearer 
+from typing import Dict, List, Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Depends, Request
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse
-from pydantic import BaseModel 
+from pydantic import BaseModel
 import uvicorn
 
 # --- CONFIGURATION & SECURITY ---
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_development_only")
+# *** NEW: Get worker secret key from environment variable ***
+WORKER_SECRET_KEY = os.environ.get("WORKER_SECRET_KEY")
+if not WORKER_SECRET_KEY:
+    print("WARNING: WORKER_SECRET_KEY environment variable not set. Worker connections will be insecure.")
+    # In production, you might want to raise an error here instead of just printing a warning.
+    # raise ValueError("WORKER_SECRET_KEY environment variable is required for secure operation.")
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+WORKER_AUTH_TIMEOUT = 10 # Seconds to wait for worker auth message
 
 # --- FIREBASE INITIALIZATION ---
 try:
     encoded_key = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
     if not encoded_key:
         raise ValueError("FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable not set.")
-        
+
     decoded_key = base64.b64decode(encoded_key).decode('utf-8')
     service_account_info = json.loads(decoded_key)
-    
+
     cred = credentials.Certificate(service_account_info)
     firebase_admin.initialize_app(cred)
-    db = firestore.client() 
-    users_collection = db.collection('users') 
-    chats_collection = db.collection('chats') 
+    db = firestore.client()
+    users_collection = db.collection('users')
+    chats_collection = db.collection('chats')
     print("Successfully connected to Firebase Firestore.")
 
 except Exception as e:
     print(f"FATAL: Could not initialize Firebase Admin SDK. Error: {e}")
+    # Consider exiting if Firebase connection fails
+    # exit(1)
+
 
 # --- HELPER FUNCTION FOR JWT TOKEN CREATION ---
 def create_access_token(data: dict, expires_delta: datetime.timedelta | None = None):
@@ -49,11 +60,11 @@ def create_access_token(data: dict, expires_delta: datetime.timedelta | None = N
     else:
         expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 # --- Dependency to get current user from JWT ---
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
@@ -62,7 +73,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
@@ -87,19 +98,21 @@ def log_message(msg):
     print(f"[{timestamp}] {msg}")
 
 class ConnectionManager:
-    # (ConnectionManager class remains the same)
     def __init__(self):
         self.web_clients: dict[str, WebSocket] = {}
         self.local_worker: WebSocket | None = None
 
     async def connect_web_client(self, websocket: WebSocket, user_id: str):
+        # Accept handled in the endpoint now
+        # await websocket.accept()
         self.web_clients[user_id] = websocket
         log_message(f"Web client '{user_id}' connected.")
 
+    # *** UPDATED: No longer accepts the connection here ***
     async def connect_local_worker(self, websocket: WebSocket):
-        await websocket.accept()
+        # await websocket.accept() # Removed - Accept happens before auth now
         self.local_worker = websocket
-        log_message(">>> Local AI Worker connected! <<<")
+        log_message(">>> Local AI Worker Authenticated and Connected! <<<")
 
     def disconnect_web_client(self, user_id: str):
         if user_id in self.web_clients:
@@ -114,14 +127,14 @@ class ConnectionManager:
         if self.local_worker and self.local_worker.client_state.name == 'CONNECTED':
             await self.local_worker.send_text(message)
         else:
-            log_message("!!! ERROR: Worker not connected. Cannot forward message. !!!")
+            log_message("!!! ERROR: Worker not connected or authenticated. Cannot forward message. !!!")
             try:
                 msg_data = json.loads(message)
                 user_id = msg_data.get("user_id")
                 if user_id and user_id in self.web_clients:
                     error_payload = {
                         "type": "error", "user_id": user_id,
-                        "data": "AI worker is not connected. Please ensure the local worker.py script is running and connected."
+                        "data": "AI worker is not connected or failed authentication. Please ensure the local worker.py script is running, has the correct key, and is connected."
                     }
                     await self.web_clients[user_id].send_text(json.dumps(error_payload))
             except Exception as e:
@@ -131,7 +144,7 @@ class ConnectionManager:
         try:
             data = json.loads(message)
             msg_type = data.get("type", "unknown"); user_id = data.get("user_id")
-            if msg_type == "ping": return
+            if msg_type == "ping": return # Ignore pings from worker
             if user_id and user_id in self.web_clients:
                 await self.web_clients[user_id].send_text(message)
         except Exception as e:
@@ -143,13 +156,13 @@ manager = ConnectionManager()
 class ChatMessage(BaseModel):
     sender: str
     text: str
-    imageB64: Optional[str] = None 
+    imageB64: Optional[str] = None
 
 class ChatData(BaseModel):
-    id: str 
+    id: str
     name: str
-    type: str 
-    timestamp: str 
+    type: str
+    timestamp: str
     history: List[ChatMessage]
     pdfName: Optional[str] = None
 
@@ -157,7 +170,7 @@ class ChatData(BaseModel):
 
 @app.get("/")
 async def get_homepage():
-    return FileResponse('index.html') 
+    return FileResponse('index.html')
 
 @app.get("/status")
 async def get_status():
@@ -197,7 +210,7 @@ async def login(user_data: dict = Body(...)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/upload/{user_id}")
-async def http_upload_pdf(user_id: str, file: UploadFile = File(...)): 
+async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
     if not manager.local_worker: raise HTTPException(status_code=503, detail="Local AI worker is not connected.")
     content = await file.read(); content_base64 = base64.b64encode(content).decode('utf-8')
     CHUNK_SIZE = 512 * 1024
@@ -211,7 +224,7 @@ async def http_upload_pdf(user_id: str, file: UploadFile = File(...)):
 @app.post("/chats", status_code=201)
 async def save_chat(chat_data: ChatData, current_user: str = Depends(get_current_user)):
     chat_id = chat_data.id
-    chat_dict = chat_data.dict(); chat_dict["userId"] = current_user 
+    chat_dict = chat_data.dict(); chat_dict["userId"] = current_user
     try:
         chats_collection.document(f"{current_user}_{chat_id}").set(chat_dict)
         log_message(f"Chat saved/updated for user '{current_user}', chat ID: {chat_id}")
@@ -227,11 +240,13 @@ async def list_chats(current_user: str = Depends(get_current_user)):
         chat_list = []
         for doc in user_chats_query:
             chat_data = doc.to_dict()
-            chat_list.append({
-                "id": chat_data.get("id"), "name": chat_data.get("name"),
-                "timestamp": chat_data.get("timestamp"), "type": chat_data.get("type"),
-                "pdfName": chat_data.get("pdfName") 
-            })
+            # Ensure basic fields exist before adding
+            if chat_data and "id" in chat_data and "name" in chat_data:
+                 chat_list.append({
+                     "id": chat_data.get("id"), "name": chat_data.get("name"),
+                     "timestamp": chat_data.get("timestamp"), "type": chat_data.get("type"),
+                     "pdfName": chat_data.get("pdfName")
+                 })
         log_message(f"Retrieved {len(chat_list)} chats for user '{current_user}'")
         return chat_list
     except Exception as e:
@@ -240,7 +255,7 @@ async def list_chats(current_user: str = Depends(get_current_user)):
 
 @app.get("/chats/{chat_id}")
 async def get_chat_history(chat_id: str, current_user: str = Depends(get_current_user)):
-    doc_id = f"{current_user}_{chat_id}" 
+    doc_id = f"{current_user}_{chat_id}"
     try:
         chat_doc_ref = chats_collection.document(doc_id); chat_doc = chat_doc_ref.get()
         if chat_doc.exists:
@@ -249,9 +264,12 @@ async def get_chat_history(chat_id: str, current_user: str = Depends(get_current
         else:
              # Fallback for potential legacy IDs (less ideal)
              legacy_doc_ref = chats_collection.document(chat_id); legacy_doc = legacy_doc_ref.get()
-             if legacy_doc.exists and legacy_doc.to_dict().get("userId") == current_user:
-                  log_message(f"Retrieved chat history (legacy ID) for user '{current_user}', chat ID: {chat_id}")
-                  return legacy_doc.to_dict()
+             if legacy_doc.exists:
+                  legacy_data = legacy_doc.to_dict()
+                  # Check ownership even for legacy
+                  if legacy_data and legacy_data.get("userId") == current_user:
+                       log_message(f"Retrieved chat history (legacy ID) for user '{current_user}', chat ID: {chat_id}")
+                       return legacy_data
              log_message(f"Chat not found or access denied for user '{current_user}', chat ID: {chat_id}")
              raise HTTPException(status_code=404, detail="Chat not found or you don't have permission.")
     except Exception as e:
@@ -264,18 +282,19 @@ async def delete_chat(chat_id: str, current_user: str = Depends(get_current_user
     try:
         chat_doc_ref = chats_collection.document(doc_id); chat_doc = chat_doc_ref.get()
         if chat_doc.exists:
-            if chat_doc.to_dict().get("userId") == current_user:
-                chat_doc_ref.delete()
-                log_message(f"Deleted chat for user '{current_user}', chat ID: {chat_id}")
-                return 
-            else: raise HTTPException(status_code=403, detail="Permission denied.")
+             # No need to check userId again, doc_id structure ensures ownership
+            chat_doc_ref.delete()
+            log_message(f"Deleted chat for user '{current_user}', chat ID: {chat_id}")
+            return
         else:
              # Fallback for legacy IDs
              legacy_doc_ref = chats_collection.document(chat_id); legacy_doc = legacy_doc_ref.get()
-             if legacy_doc.exists and legacy_doc.to_dict().get("userId") == current_user:
-                  legacy_doc_ref.delete()
-                  log_message(f"Deleted chat (legacy ID) for user '{current_user}', chat ID: {chat_id}")
-                  return
+             if legacy_doc.exists:
+                  legacy_data = legacy_doc.to_dict()
+                  if legacy_data and legacy_data.get("userId") == current_user:
+                       legacy_doc_ref.delete()
+                       log_message(f"Deleted chat (legacy ID) for user '{current_user}', chat ID: {chat_id}")
+                       return
              log_message(f"Attempt to delete non-existent/unauthorized chat by user '{current_user}', chat ID: {chat_id}")
              raise HTTPException(status_code=404, detail="Chat not found or you don't have permission.")
     except Exception as e:
@@ -283,47 +302,107 @@ async def delete_chat(chat_id: str, current_user: str = Depends(get_current_user
         raise HTTPException(status_code=500, detail="Could not delete chat.")
 
 # --- WEBSOCKET ENDPOINTS ---
+
+# *** UPDATED: Worker Endpoint with Authentication ***
 @app.websocket("/ws/worker")
 async def worker_websocket(websocket: WebSocket):
-    await manager.connect_local_worker(websocket)
+    await websocket.accept()
+    authenticated = False
     try:
-        while True: data = await websocket.receive_text(); await manager.forward_to_web_client(data)
-    except WebSocketDisconnect: await manager.disconnect_local_worker()
+        # Wait for authentication message with timeout
+        auth_data_str = await asyncio.wait_for(websocket.receive_text(), timeout=WORKER_AUTH_TIMEOUT)
+        auth_data = json.loads(auth_data_str)
+
+        # Check if the secret key matches (only if WORKER_SECRET_KEY is configured)
+        # *** UPDATED Check: Use "secret" key from worker payload ***
+        if WORKER_SECRET_KEY:
+            if auth_data.get("type") == "auth" and auth_data.get("secret") == WORKER_SECRET_KEY:
+                authenticated = True
+                await manager.connect_local_worker(websocket) # Connect *after* successful auth
+            else:
+                log_message("!!! Worker connection attempt FAILED: Invalid or missing secret key. !!!")
+                await websocket.close(code=1008, reason="Authentication failed")
+                return
+        else:
+             # If no key is configured, allow connection but log a warning (less secure)
+             authenticated = True
+             log_message("WARNING: Worker connected without authentication (WORKER_SECRET_KEY not set).")
+             await manager.connect_local_worker(websocket)
+
+
+        # If authenticated, proceed to message loop
+        if authenticated:
+            while True:
+                 data = await websocket.receive_text()
+                 await manager.forward_to_web_client(data)
+
+    except asyncio.TimeoutError:
+        log_message(f"!!! Worker failed to authenticate within {WORKER_AUTH_TIMEOUT} seconds. Disconnecting. !!!")
+        if websocket.client_state.name == 'CONNECTED':
+            await websocket.close(code=1008, reason="Authentication timeout")
+    except WebSocketDisconnect:
+        if authenticated:
+            await manager.disconnect_local_worker()
+        else:
+            log_message("Unauthenticated worker disconnected.")
+    except json.JSONDecodeError:
+         log_message("!!! Worker sent invalid JSON during authentication. Disconnecting. !!!")
+         if websocket.client_state.name == 'CONNECTED':
+            await websocket.close(code=1008, reason="Invalid authentication format")
+    except Exception as e:
+        log_message(f"!!! Error in worker websocket: {e} !!!")
+        if authenticated and websocket.client_state.name == 'CONNECTED':
+             await manager.disconnect_local_worker()
+
 
 @app.websocket("/ws/web")
 async def web_client_websocket(websocket: WebSocket):
-    user_id = None; await websocket.accept() 
+    user_id = None; await websocket.accept() # Accept connection immediately for web clients
     try:
+        # Wait for authentication message (JWT or guest ID)
         auth_data_str = await asyncio.wait_for(websocket.receive_text(), timeout=30)
         auth_data = json.loads(auth_data_str); token = auth_data.get("token")
-        if token:
+
+        if token: # User login with JWT
             try:
-                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
                 user_id = payload.get("sub")
-                if user_id is None: await websocket.close(code=1008, reason="Invalid token payload"); return 
-            except jwt.ExpiredSignatureError: await websocket.close(code=1008, reason="Token has expired"); return
-            except jwt.InvalidTokenError: await websocket.close(code=1008, reason="Invalid token"); return
+                if user_id is None:
+                    await websocket.close(code=1008, reason="Invalid token payload"); return
+            except jwt.ExpiredSignatureError:
+                await websocket.close(code=1008, reason="Token has expired"); return
+            except jwt.InvalidTokenError:
+                await websocket.close(code=1008, reason="Invalid token"); return
         else: # Guest Mode
             user_id = auth_data.get("user_id")
-            if not user_id: await websocket.close(code=1008, reason="Guest user_id missing"); return
-        
+            if not user_id:
+                await websocket.close(code=1008, reason="Guest user_id missing"); return
+
         # Connect the client *before* sending auth_success
         await manager.connect_web_client(websocket, user_id)
-        
-        # <<< FIX: Send auth_success message back to the client >>>
+
+        # Send auth_success message back to the client
         await websocket.send_text(json.dumps({"type": "auth_success", "user_id": user_id}))
-        
+
+        # Message loop for authenticated web client
         while True:
             data_text = await websocket.receive_text(); data = json.loads(data_text)
-            if data.get("type") == "ping": continue
-            data['user_id'] = user_id; await manager.forward_to_worker(json.dumps(data))
-            
+            if data.get("type") == "ping": continue # Respond to pings if needed, or just ignore
+            # Add user_id to the message before forwarding
+            data['user_id'] = user_id;
+            await manager.forward_to_worker(json.dumps(data))
+
     except WebSocketDisconnect:
         if user_id: manager.disconnect_web_client(user_id)
     except asyncio.TimeoutError:
         log_message("Client failed to authenticate in time.")
-        if websocket.client_state.name == 'CONNECTED': await websocket.close(code=1008, reason="Authentication timeout")
+        if websocket.client_state.name == 'CONNECTED':
+            await websocket.close(code=1008, reason="Authentication timeout")
+    except json.JSONDecodeError:
+         log_message("!!! Web client sent invalid JSON during authentication. Disconnecting. !!!")
+         if websocket.client_state.name == 'CONNECTED':
+            await websocket.close(code=1008, reason="Invalid authentication format")
     except Exception as e:
         log_message(f"Error in web client websocket: {e}")
+        # Ensure cleanup if user_id was set
         if user_id and websocket.client_state.name == 'CONNECTED': manager.disconnect_web_client(user_id)
-
