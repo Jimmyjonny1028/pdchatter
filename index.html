@@ -321,8 +321,21 @@
             let isLoginMode = true; // For auth modal
             let socket, statusInterval, pingInterval;
             let thinkingBubbleElement = null;
-            let guestId = localStorage.getItem('ai_toolkit_user_id') || `guest_${Math.random().toString(36).substr(2, 9)}`;
-            localStorage.setItem('ai_toolkit_user_id', guestId); // Ensure guestId is always set
+            let guestId; // <-- *** FIX: Declare guestId here ***
+
+            // *** FIX: Initialize guestId inside DOMContentLoaded with error handling ***
+            try {
+                guestId = localStorage.getItem('ai_toolkit_user_id');
+                if (!guestId) {
+                    guestId = `guest_${Math.random().toString(36).substr(2, 9)}`;
+                    localStorage.setItem('ai_toolkit_user_id', guestId);
+                }
+            } catch (e) {
+                console.warn("localStorage is not available. Using temporary guest ID.", e.message);
+                guestId = `guest_${Math.random().toString(36).substr(2, 9)}`;
+            }
+            // *** END FIX ***
+
 
             const RENDER_API_BASE_URL = "https://chatpdf-server-shtq.onrender.com"; // Your backend URL
 
@@ -386,7 +399,7 @@
                  container.appendChild(bubble);
                  // Scroll to bottom using requestAnimationFrame for better timing
                  requestAnimationFrame(() => {
-                     container.scrollTop = container.scrollHeight;
+                     if (container) container.scrollTop = container.scrollHeight;
                  });
 
 
@@ -547,9 +560,7 @@
                 socket.onopen = () => {
                     console.log("WebSocket connected. Sending auth...");
                     const token = localStorage.getItem('ai_toolkit_token');
-                    guestId = localStorage.getItem('ai_toolkit_user_id') || `guest_${Math.random().toString(36).substr(2, 9)}`;
-                    localStorage.setItem('ai_toolkit_user_id', guestId);
-
+                    // 'guestId' is now guaranteed to be set from the logic at the start of DOMContentLoaded
                     socket.send(JSON.stringify(token ? { type: 'auth', token: token } : { type: 'auth', user_id: guestId }));
 
                     if (pingInterval) clearInterval(pingInterval);
@@ -906,11 +917,12 @@
                  const isThought = target?.endsWith('_thoughts');
                  // Remove thinking bubble only when the MAIN chat stream is cleaned up
                  if (!isThought && target?.endsWith('_chat')) {
-                      removeThinkingBubble();
+                      // Don't remove thinking bubble here, let finalizeStream handle it
+                      // removeThinkingBubble();
                   }
 
                 if (!target) { // Cleanup all
-                     removeThinkingBubble(); // Ensure removal
+                     removeThinkingBubble(); // Ensure removal if cleaning all
                      Object.keys(streamingState).forEach(key => {
                          if (streamingState[key]) { // Check key exists
                              streamingState[key] = { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false };
@@ -1008,8 +1020,13 @@
                     } catch (error) { /* Error logged by fetchWithAuth */ }
                 } else {
                     const storageKey = `${guestId}_${chatId}`;
-                    localStorage.setItem(storageKey, JSON.stringify(chatData));
-                    console.log(`Guest chat saved locally: ${storageKey}`);
+                    // Use try-catch for localStorage in case it's blocked (e.g., incognito)
+                    try {
+                        localStorage.setItem(storageKey, JSON.stringify(chatData));
+                        console.log(`Guest chat saved locally: ${storageKey}`);
+                    } catch (e) {
+                         console.warn("Could not save guest chat to localStorage:", e.message);
+                    }
                 }
              }
 
@@ -1025,15 +1042,24 @@
                         chats = fetchedChats ? fetchedChats.filter(chat => chat.type === activeTab) : [];
                         console.log("Fetched chats from backend:", chats.length);
                     } else {
-                        guestId = localStorage.getItem('ai_toolkit_user_id');
-                        for (let i = 0; i < localStorage.length; i++) {
-                            const key = localStorage.key(i);
-                            if (key.startsWith(`${guestId}_chat_`)) {
-                                try { const chat = JSON.parse(localStorage.getItem(key)); if (chat.type === activeTab) chats.push(chat); }
-                                catch (e) { console.error(`Error parsing localStorage key ${key}:`, e); localStorage.removeItem(key); } // Remove invalid item
+                        // Use try-catch for localStorage
+                        try {
+                            guestId = localStorage.getItem('ai_toolkit_user_id');
+                            if (guestId) { // Only try if guestId exists
+                                for (let i = 0; i < localStorage.length; i++) {
+                                    const key = localStorage.key(i);
+                                    if (key.startsWith(`${guestId}_chat_`)) {
+                                        try { const chat = JSON.parse(localStorage.getItem(key)); if (chat.type === activeTab) chats.push(chat); }
+                                        catch (e) { console.error(`Error parsing localStorage key ${key}:`, e); localStorage.removeItem(key); } // Remove invalid item
+                                    }
+                                }
                             }
+                            console.log("Loaded guest chats from localStorage:", chats.length);
+                        } catch (e) {
+                             console.warn("Could not load guest chats from localStorage:", e.message);
+                             ui.savedChatsList.innerHTML = '<p class="text-slate-400 text-sm px-2">Guest chat history unavailable (localStorage blocked).</p>';
+                             return; // Stop if localStorage is blocked
                         }
-                        console.log("Loaded guest chats from localStorage:", chats.length);
                     }
                 } catch (error) { ui.savedChatsList.innerHTML = '<p class="text-red-400 text-sm px-2">Error loading chats.</p>'; return; }
 
@@ -1068,7 +1094,15 @@
 
                 try {
                     if (token) { chatData = await fetchWithAuth(`${RENDER_API_BASE_URL}/chats/${chatIdToLoad}`); }
-                    else { chatData = JSON.parse(localStorage.getItem(identifier)); }
+                    else {
+                        // Use try-catch for localStorage
+                         try {
+                              chatData = JSON.parse(localStorage.getItem(identifier));
+                         } catch (e) {
+                              console.warn("Could not load guest chat from localStorage:", e.message);
+                              throw new Error("Could not load chat data (localStorage blocked?).");
+                         }
+                    }
 
                      if (!chatData) { throw new Error("Chat data not found."); } // Throw error if null
                      if (!chatData.history || !Array.isArray(chatData.history)) { // Validate history
@@ -1113,7 +1147,19 @@
 
                 try {
                     if (token) { await fetchWithAuth(`${RENDER_API_BASE_URL}/chats/${chatIdToDelete}`, { method: 'DELETE' }); console.log(`Chat deleted from backend: ${chatIdToDelete}`); }
-                    else { localStorage.removeItem(identifier); console.log(`Guest chat deleted locally: ${identifier}`); }
+                    else {
+                        // Use try-catch for localStorage
+                        try {
+                             localStorage.removeItem(identifier);
+                             console.log(`Guest chat deleted locally: ${identifier}`);
+                        } catch (e) {
+                             console.warn("Could not delete guest chat from localStorage:", e.message);
+                             // Optionally inform the user
+                             addMessage("Could not delete chat (localStorage blocked?).", 'system', activeTab);
+                             loadSavedChats(); // Refresh list even on error
+                             return;
+                        }
+                    }
 
                     const currentChatIdKey = activeTab === 'ai_chat' ? 'currentAIChatId' : 'currentPdfChatId';
                     const currentChatId = sessionStorage.getItem(currentChatIdKey);
@@ -1290,10 +1336,20 @@
                         button.classList.add('attached'); // Mark as attached
                         button.addEventListener('click', () => {
                             const code = codeElement.innerText; // Get text from the code element
-                            navigator.clipboard.writeText(code).then(() => {
+                            // Use document.execCommand for broader compatibility
+                            const textArea = document.createElement("textarea");
+                            textArea.value = code;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            try {
+                                document.execCommand('copy');
                                 button.textContent = 'Copied!';
-                                setTimeout(() => { button.textContent = 'Copy'; }, 2000);
-                            });
+                            } catch (err) {
+                                console.error('Fallback: Oops, unable to copy', err);
+                                button.textContent = 'Error';
+                            }
+                            document.body.removeChild(textArea);
+                            setTimeout(() => { button.textContent = 'Copy'; }, 2000);
                         });
                     }
                 });
@@ -1314,17 +1370,36 @@
                         // Get text, attempting to find a <code> tag first
                         const code = block.querySelector('code')?.innerText || block.innerText;
                         // Clean the "Copy" text out if it got included
-                        const cleanedCode = code.replace(/Copy$/, '').trim(); 
+                        const cleanedCode = code.replace(/Copy$/, '').trim();
                         
-                        navigator.clipboard.writeText(cleanedCode).then(() => {
-                            button.textContent = 'Copied!';
-                            setTimeout(() => { button.textContent = 'Copy'; }, 2000);
-                        });
+                         // Use document.execCommand for broader compatibility
+                        const textArea = document.createElement("textarea");
+                        textArea.value = cleanedCode;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                             button.textContent = 'Copied!';
+                        } catch (err) {
+                            console.error('Fallback: Oops, unable to copy', err);
+                            button.textContent = 'Error';
+                        }
+                        document.body.removeChild(textArea);
+                        setTimeout(() => { button.textContent = 'Copy'; }, 2000);
                     });
                 });
             }
 
+
             // --- Event Listeners (FINAL PLACEMENT) ---
+             // Add input listeners to enable/disable auth submit button
+            ui.usernameInput.addEventListener('input', () => {
+                 ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim());
+            });
+             ui.passwordInput.addEventListener('input', () => {
+                 ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim());
+            });
+
             ui.tabChatPDF.addEventListener('click', () => {
                  if (activeTab === 'pdf_chat') return;
                  cleanupStreaming(); activeTab = 'pdf_chat';
@@ -1357,14 +1432,15 @@
             ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
             ui.authForm.addEventListener('submit', handleAuthSubmit);
             ui.logoutButton.addEventListener('click', handleLogout);
-            ui.loginButton.addEventListener('click', () => { isLoginMode = true; ui.authTitle.textContent = 'Login'; ui.authSubmitButton.textContent = 'Login'; ui.authSwitchButton.textContent = 'Need an account? Sign up'; showAuthModal(true); });
+            ui.loginButton.addEventListener('click', () => { isLoginMode = true; ui.authTitle.textContent = 'Login'; ui.authSubmitButton.textContent = 'Login'; ui.authSwitchButton.textContent = 'Need an account? Sign up'; ui.authSubmitButton.disabled = true; showAuthModal(true); });
             ui.authCloseButton.addEventListener('click', () => showAuthModal(false));
             ui.authSwitchButton.addEventListener('click', () => {
                  isLoginMode = !isLoginMode; ui.authTitle.textContent = isLoginMode ? 'Login' : 'Sign Up';
                  ui.authSubmitButton.textContent = isLoginMode ? 'Login' : 'Sign Up';
                  ui.authSwitchButton.textContent = isLoginMode ? 'Need an account? Sign up' : 'Have an account? Login';
                  ui.authError.style.display = 'none'; ui.authForm.reset();
-                 ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim());
+                 ui.authSubmitButton.disabled = true; // Start disabled on switch
+                 // ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim()); // Re-evaluate immediately - removed, handled by input listeners
             });
 
             // --- Initial Load ---
