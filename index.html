@@ -756,6 +756,7 @@
                 }
             }
 
+            // *** THIS IS THE NEW, CORRECTED FUNCTION ***
             function renderCharacters() {
                  const renderSpeed = fastMode ? 999999 : CHARS_PER_TICK;
                 let anyActiveStreams = false;
@@ -767,26 +768,39 @@
 
                      const isThought = key.endsWith('_thoughts');
                      const mainChatKey = isThought ? key.replace('_thoughts', '_chat') : key;
-                     const thoughtKey = mainChatKey.replace('_chat', '_thoughts');
+                     const thoughtKey = mainChatKey.replace('_chat', '_thoughts'); // Define thoughtKey here
 
+                     // *** FIX START ***
+                     // Create the main answer bubble as soon as the first chunk arrives,
+                     // regardless of the thoughts stream state.
                      if (!isThought && !state.bubble) {
-                         if (!streamingState[thoughtKey] || streamingState[thoughtKey].ended) {
-                             const answerElements = addMessage('', 'ai', mainChatKey);
-                             if(answerElements) Object.assign(state, answerElements);
-                         } else { continue; }
+                         const answerElements = addMessage('', 'ai', mainChatKey);
+                         if(answerElements) Object.assign(state, answerElements);
                      }
+                     // *** FIX END ***
+
 
                     if ((state.textBuffer.length > 0 || state.ended) && state.contentDiv) {
                         const charsToRender = Math.min(state.textBuffer.length, renderSpeed);
                         const chunk = state.textBuffer.substring(0, charsToRender);
                         state.currentText += chunk; state.textBuffer = state.textBuffer.substring(charsToRender);
 
-                        state.contentDiv.innerHTML = marked.parse(state.currentText);
+                        // Ensure marked.parse is used safely
+                        try {
+                             state.contentDiv.innerHTML = marked.parse(state.currentText || ''); // Add fallback for safety
+                        } catch (e) {
+                            console.error("Markdown parsing error:", e, state.currentText);
+                            // Fallback to plain text on error
+                            state.contentDiv.textContent = state.currentText || '';
+                        }
+
+
                         if (!isThought) {
                             state.contentDiv.querySelectorAll('pre').forEach(pre => {
                                 if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
                                     const codeText = pre.textContent;
-                                    if (codeText.trim().startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
+                                    // More robust check for code block structure
+                                    if (codeText && codeText.trim().startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
                                         pre.outerHTML = renderCodeBlock(codeText);
                                     }
                                 }
@@ -795,11 +809,15 @@
                         }
 
                         const container = key.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
-                        if (container.scrollHeight - container.scrollTop <= container.clientHeight + 150) { container.scrollTop = container.scrollHeight; }
+                        // Check if container exists before scrolling
+                        if (container && container.scrollHeight - container.scrollTop <= container.clientHeight + 150) {
+                             container.scrollTop = container.scrollHeight;
+                        }
                     }
 
                     if (state.ended && state.textBuffer.length === 0) {
                         finalizeStream(key);
+                        // Re-check if any streams are still active after finalizing one
                         anyActiveStreams = Object.values(streamingState).some(s => s?.active);
                     }
                 }
@@ -807,12 +825,14 @@
                 if (!anyActiveStreams && renderInterval) {
                     clearInterval(renderInterval); renderInterval = null;
                      const currentStatus = ui.status.textContent;
+                     // Only update UI state if it's not showing an error/disconnect message
                      if (!currentStatus.includes('Disconnected') && !currentStatus.includes('Error') && !currentStatus.includes('Waiting')) {
                          if (currentPDFName && activeTab === 'pdf_chat') { setUIState('ready_to_chat', `Ready: ${currentPDFName}`); }
                          else { setUIState('worker_ready', 'AI worker connected.'); }
                      }
                 }
             }
+            // *** END OF NEW FUNCTION ***
 
 
             function finalizeStream(target, isError = false) {
@@ -827,12 +847,18 @@
                  const text = state.currentText.trim();
 
                  if (state.contentDiv) {
-                     state.contentDiv.innerHTML = marked.parse(text);
+                     try {
+                        state.contentDiv.innerHTML = marked.parse(text || ''); // Add fallback
+                     } catch(e) {
+                         console.error("Markdown parsing error in finalizeStream:", e, text);
+                         state.contentDiv.textContent = text || ''; // Fallback
+                     }
+
                      if (!isThought) {
                           state.contentDiv.querySelectorAll('pre:not(.line-numbers pre):not(.code-content pre)').forEach(pre => {
                               if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
                                   const codeText = pre.textContent.replace(/Copy$/,'').trim();
-                                   if (codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) { pre.outerHTML = renderCodeBlock(codeText); }
+                                   if (codeText && codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) { pre.outerHTML = renderCodeBlock(codeText); }
                               }
                           });
                           addCopyButtonsTo(state.contentDiv);
@@ -1108,7 +1134,12 @@
                           bubble.textContent = msg.text;
                      } else {
                          bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1'); // Simplified classes
-                         bubble.classList.add(msg.sender === 'user' ? 'user-bubble self-end ml-auto' : 'ai-bubble self-start mr-auto');
+                         // *** Re-applying the classList.add fix here just in case ***
+                         if (msg.sender === 'user') {
+                            bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+                         } else {
+                            bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                         }
 
                          const textNode = document.createElement('div');
                          if (msg.sender === 'ai') {
@@ -1126,7 +1157,7 @@
                                   if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
                                       const codeText = pre.textContent.replace(/Copy$/,'').trim(); // More robustly remove 'Copy'
                                       // Check if it looks like a fenced block more reliably
-                                      if (codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
+                                      if (codeText && codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
                                            pre.outerHTML = renderCodeBlock(codeText);
                                       }
                                   }
@@ -1146,7 +1177,7 @@
                  });
                  // Scroll to bottom after rendering
                  requestAnimationFrame(() => { // Use requestAnimationFrame for smoother scroll after render
-                    container.scrollTop = container.scrollHeight;
+                    if (container) container.scrollTop = container.scrollHeight;
                  });
              }
 
@@ -1194,13 +1225,19 @@
              }
              
              function renderCodeBlock(codeText) {
+                if (!codeText) return '<pre><code></code></pre>'; // Handle empty
                 const lines = codeText.trim().split('\n');
                 const langMatch = lines[0].match(/```(\w+)/);
                 const language = langMatch ? langMatch[1] : '';
-                const codeLines = lines.slice(1, lines.length - 1).join('\n');
-                const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const codeHtml = codeLines.split('\n').map(line => `<code>${escapeHtml(line)}</code>`).join('');
-                const lineNumbers = codeLines.split('\n').map((_, index) => index + 1).join('\n');
+                
+                // Ensure we only take code lines, even if no language is specified
+                const codeLinesContent = (langMatch ? lines.slice(1, lines.length - 1) : lines.slice(0).filter(line => !line.startsWith('```'))).join('\n');
+                
+                const escapeHtml = (str) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                
+                const codeHtml = codeLinesContent.split('\n').map(line => `<code>${escapeHtml(line)}</code>`).join('');
+                const lineNumbers = codeLinesContent.split('\n').map((_, index) => index + 1).join('\n');
+                
                 return `
                     <div class="code-block-container">
                         ${language ? `<span class="language-tag">${language}</span>` : ''}
@@ -1218,7 +1255,7 @@
                     // Check if a button has already been attached to avoid duplicates
                     if (blockContainer.querySelector('.copy-button.attached')) return;
                     
-                    const codeElement = blockContainer.querySelector('.code-content code');
+                    const codeElement = blockContainer.querySelector('.code-content'); // Get the whole code content
                     if (!codeElement) return;
                     
                     const button = blockContainer.querySelector('.copy-button');
@@ -1242,6 +1279,8 @@
                     const button = document.createElement('button');
                     button.className = 'copy-button attached'; // Add 'attached'
                     button.textContent = 'Copy';
+                    // Style it to be inside the <pre>
+                    block.style.position = 'relative';
                     block.appendChild(button);
                     
                     button.addEventListener('click', () => {
