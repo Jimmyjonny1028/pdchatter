@@ -341,7 +341,6 @@
             // --- Helper Functions ---
 
             // Function to add a message bubble to the UI
-            // *** MOVED HERE TO FIX THE BUG ***
             function addMessage(text, sender, target = activeTab, imageB64 = null) {
                  const history = target.startsWith('ai_') ? aiChatHistory : pdfChatHistory;
                  const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
@@ -368,14 +367,11 @@
                  const bubble = document.createElement('div');
                  bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
 
-                 // *** THIS IS THE FIX ***
-                 // Instead of adding one long string with spaces, we add the classes correctly.
                  if (sender === 'user') {
                      bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
                  } else {
                      bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
                  }
-                 // *** END OF FIX ***
 
                  const textNode = document.createElement('div');
                  textNode.textContent = text || ''; // Ensure text content even if empty
@@ -756,7 +752,6 @@
                 }
             }
 
-            // *** THIS IS THE NEW, CORRECTED FUNCTION ***
             function renderCharacters() {
                  const renderSpeed = fastMode ? 999999 : CHARS_PER_TICK;
                 let anyActiveStreams = false;
@@ -770,14 +765,12 @@
                      const mainChatKey = isThought ? key.replace('_thoughts', '_chat') : key;
                      const thoughtKey = mainChatKey.replace('_chat', '_thoughts'); // Define thoughtKey here
 
-                     // *** FIX START ***
                      // Create the main answer bubble as soon as the first chunk arrives,
                      // regardless of the thoughts stream state.
                      if (!isThought && !state.bubble) {
                          const answerElements = addMessage('', 'ai', mainChatKey);
                          if(answerElements) Object.assign(state, answerElements);
                      }
-                     // *** FIX END ***
 
 
                     if ((state.textBuffer.length > 0 || state.ended) && state.contentDiv) {
@@ -818,34 +811,35 @@
                     if (state.ended && state.textBuffer.length === 0) {
                         finalizeStream(key);
                         // Re-check if any streams are still active after finalizing one
-                        anyActiveStreams = Object.values(streamingState).some(s => s?.active);
+                        // anyActiveStreams = Object.values(streamingState).some(s => s?.active);
+                        // ^-- This check moves to finalizeStream to ensure UI state updates correctly
                     }
                 }
 
-                if (!anyActiveStreams && renderInterval) {
-                    clearInterval(renderInterval); renderInterval = null;
-                     const currentStatus = ui.status.textContent;
-                     // Only update UI state if it's not showing an error/disconnect message
-                     if (!currentStatus.includes('Disconnected') && !currentStatus.includes('Error') && !currentStatus.includes('Waiting')) {
-                         if (currentPDFName && activeTab === 'pdf_chat') { setUIState('ready_to_chat', `Ready: ${currentPDFName}`); }
-                         else { setUIState('worker_ready', 'AI worker connected.'); }
-                     }
-                }
+                // *** REMOVED UI state update from here - moved to finalizeStream ***
+                // if (!anyActiveStreams && renderInterval) { ... }
             }
-            // *** END OF NEW FUNCTION ***
 
 
-            function finalizeStream(target, isError = false) {
+             // *** THIS FUNCTION IS UPDATED ***
+             function finalizeStream(target, isError = false) {
                  if (!target || !streamingState[target]) { console.warn(`Attempt to finalize invalid stream: ${target}`); return; }
                  const state = streamingState[target];
-                 if (!state.active && !isError && state.currentText === '') { cleanupStreaming(target); return; }
+                 // Skip if already inactive (could happen if called twice)
+                 if (!state.active) return;
 
                  const isThought = target.endsWith('_thoughts');
+                 // Only remove thinking bubble if the MAIN CHAT stream ends
                  if (!isThought) removeThinkingBubble();
 
-                 if (state.contentDiv && state.textBuffer.length > 0) { state.currentText += state.textBuffer; state.textBuffer = ''; }
+                 // Render any remaining text in the buffer
+                 if (state.contentDiv && state.textBuffer.length > 0) {
+                     state.currentText += state.textBuffer;
+                     state.textBuffer = '';
+                 }
                  const text = state.currentText.trim();
 
+                 // Final render and history/autosave
                  if (state.contentDiv) {
                      try {
                         state.contentDiv.innerHTML = marked.parse(text || ''); // Add fallback
@@ -872,20 +866,46 @@
                               }
                           }
                      } else if (state.summary) { state.summary.textContent = 'View Thinking Process (Finished)'; }
-                 } else if (!isThought && !isError && text.length > 0) {
+                 } else if (!isThought && !isError && text.length > 0) { // Handle case where bubble might not exist if error occurred early
                        const history = target.startsWith('ai_') ? aiChatHistory : pdfChatHistory;
                        const lastMsg = history.length > 0 ? history[history.length - 1] : null;
                        if (!lastMsg || lastMsg.sender !== 'ai' || lastMsg.text !== text) { history.push({ sender: 'ai', text: text, imageB64: null }); autosaveChat(); }
                   }
 
-
+                 // Mark this specific stream as inactive *before* checking others
                  cleanupStreaming(target);
-                 // UI state update is handled by renderCharacters interval cleanup
+
+                 // *** NEW LOGIC TO RESET UI STATE ***
+                 // Determine the keys for the main chat and thoughts for the *current active tab*
+                 const mainChatKey = activeTab === 'ai_chat' ? 'ai_chat' : 'pdf_chat';
+                 const thoughtKey = activeTab === 'ai_chat' ? 'ai_thoughts' : 'pdf_thoughts';
+
+                 // Check if BOTH streams related to the current tab are now inactive
+                 const mainStreamInactive = !streamingState[mainChatKey] || !streamingState[mainChatKey].active;
+                 const thoughtStreamInactive = !streamingState[thoughtKey] || !streamingState[thoughtKey].active;
+
+                 if (mainStreamInactive && thoughtStreamInactive && !isError) {
+                     // Only reset to 'ready' if both streams for the active tab are done and no error occurred
+                     console.log(`Both streams for ${activeTab} finished. Resetting UI state.`);
+                     if (currentPDFName && activeTab === 'pdf_chat') {
+                         setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
+                     } else {
+                         setUIState('worker_ready', 'AI worker connected.');
+                     }
+                 } else if (isError) {
+                     // If an error occurred, reset state based on connection status (already done in handleServerMessage error case)
+                     console.log("Error occurred during stream, UI state handled by error case.");
+                 } else {
+                     console.log(`Stream ${target} finished, but other streams for ${activeTab} might still be active. Not resetting UI state yet.`);
+                 }
+                 // *** END OF NEW LOGIC ***
             }
+
 
             function cleanupStreaming(target) {
                  const isThought = target?.endsWith('_thoughts');
-                 if (!isThought && target?.endsWith('_chat')) { // Only remove thinking bubble if main chat stream ends
+                 // Remove thinking bubble only when the MAIN chat stream is cleaned up
+                 if (!isThought && target?.endsWith('_chat')) {
                       removeThinkingBubble();
                   }
 
@@ -896,19 +916,26 @@
                              streamingState[key] = { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false };
                          }
                      });
+                     if (renderInterval) { clearInterval(renderInterval); renderInterval = null; } // Clear interval when cleaning all
                  } else if (streamingState[target]) { // Cleanup specific
                      streamingState[target] = { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false };
                  }
 
+                 // Check if *any* stream is still active
                 let anyActive = Object.values(streamingState).some(s => s?.active);
-                if (!anyActive && renderInterval) { clearInterval(renderInterval); renderInterval = null; }
+                // If no streams are active *at all*, clear the interval
+                if (!anyActive && renderInterval) {
+                     clearInterval(renderInterval);
+                     renderInterval = null;
+                     console.log("All streams inactive, clearing render interval.");
+                 }
              }
 
             // --- Error Handling ---
             function showRetryButton(tab, errorMsg) {
                 const errorContainer = tab === 'pdf_chat' ? ui.errorRetryContainerPdf : ui.errorRetryContainerAi;
                 const targetChatContainer = tab === 'pdf_chat' ? ui.chatContainer : ui.chatContainerAI;
-                removeThinkingBubble();
+                removeThinkingBubble(); // Ensure thinking bubble is gone on error
 
                 errorContainer.innerHTML = ''; // Clear previous button
                  const existingErrorBubbles = targetChatContainer.querySelectorAll('.error-bubble-container');
