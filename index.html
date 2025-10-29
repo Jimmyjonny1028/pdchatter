@@ -9,95 +9,95 @@
     <style>
         /* Base styles */
         body { font-family: 'Inter', sans-serif; }
-        .chat-bubble { max-width: 90%; word-wrap: break-word; white-space: pre-wrap; margin-bottom: 0.5rem; /* Consistent spacing */ }
-        .user-bubble { background-color: #3b82f6; /* Brighter blue */ color: white; border-radius: 1rem 1rem 0.25rem 1rem; /* Rounded specific corners */ }
-        .ai-bubble { background-color: #4b5563; /* Slightly lighter gray */ color: #e5e7eb; border-radius: 1rem 1rem 1rem 0.25rem; /* Rounded specific corners */ }
+        .chat-bubble { max-width: 90%; word-wrap: break-word; white-space: pre-wrap; margin-bottom: 0.5rem; }
+        .user-bubble { background-color: #3b82f6; color: white; border-radius: 1rem 1rem 0.25rem 1rem; }
+        .ai-bubble { background-color: #4b5563; color: #e5e7eb; border-radius: 1rem 1rem 1rem 0.25rem; }
 
         /* --- STYLES FOR AUTH MODAL --- */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(17, 24, 39, 0.8); /* Darker overlay */ display: flex; /* Use flex for centering */
+            background-color: rgba(17, 24, 39, 0.8); display: flex;
             justify-content: center; align-items: center; z-index: 50;
         }
         .modal-content {
-            background-color: #1f2937; /* Dark gray */ padding: 2rem; border-radius: 0.75rem; /* More rounded */
-            width: 90%; max-width: 400px; color: #d1d5db; /* Light gray text */ box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            background-color: #1f2937; padding: 2rem; border-radius: 0.75rem;
+            width: 90%; max-width: 400px; color: #d1d5db; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        .modal-content input { background-color: #374151; border: 1px solid #4b5563; color: white; padding: 0.5rem; /* Added padding */ border-radius: 0.375rem; /* Added rounding */ }
-        .modal-content label { color: #9ca3af; margin-bottom: 0.25rem; display: block; /* Ensure label takes space */ }
+        .modal-content input { background-color: #374151; border: 1px solid #4b5563; color: white; padding: 0.5rem; border-radius: 0.375rem; }
+        .modal-content label { color: #9ca3af; margin-bottom: 0.25rem; display: block; }
 
         /* --- STYLES FOR THOUGHTS BUBBLE --- */
         .thoughts-bubble {
-            background-color: #1f2937; /* Match modal */ color: #9ca3af; font-size: 0.9rem;
-            border-left: 3px solid #6366f1; padding: 0.5rem 1rem; margin: 0.5rem 0; border-radius: 0 0.5rem 0.5rem 0; /* Slight rounding */
+            background-color: #1f2937; color: #9ca3af; font-size: 0.9rem;
+            border-left: 3px solid #6366f1; padding: 0.5rem 1rem; margin: 0.5rem 0; border-radius: 0 0.5rem 0.5rem 0;
         }
         .thoughts-bubble details > summary {
-            list-style: none; padding: 0.25rem 0; cursor: pointer; /* Removed padding */
-            outline: none; color: #a5b4fc; font-weight: 500; /* Adjusted weight */
+            list-style: none; padding: 0.25rem 0; cursor: pointer;
+            outline: none; color: #a5b4fc; font-weight: 500;
         }
         .thoughts-bubble details[open] > summary {
             border-bottom: 1px solid #374151; margin-bottom: 0.75rem; padding-bottom: 0.25rem;
         }
         .thoughts-content pre {
-            background-color: #111827; /* Darker pre background */ padding: 0.75rem; border-radius: 0.375rem;
-            white-space: pre-wrap; overflow-x: auto; font-size: 0.85em; /* Slightly smaller */
+            background-color: #111827; padding: 0.75rem; border-radius: 0.375rem;
+            white-space: pre-wrap; overflow-x: auto; font-size: 0.85em;
         }
 
         /* --- STYLES FOR SPEED BUTTON --- */
         .speed-button {
-            background-color: #4f46e5; /* Adjusted base color */ color: white; padding: 0.5rem; border-radius: 0.5rem;
+            background-color: #4f46e5; color: white; padding: 0.5rem; border-radius: 0.5rem;
             cursor: pointer; transition: background-color 0.2s, opacity 0.2s;
-            opacity: 0.9; /* Slightly less transparent */ font-weight: 600; white-space: nowrap;
+            opacity: 0.9; font-weight: 600; white-space: nowrap;
         }
-        .speed-button:hover { opacity: 1; background-color: #6366f1; } /* Lighter hover */
+        .speed-button:hover { opacity: 1; background-color: #6366f1; }
         .speed-button.fast-active { background-color: #f59e0b; opacity: 1; }
 
         /* --- STYLES FOR CODE BLOCK WITH LINE NUMBERS --- */
         .code-block-container {
-            position: relative; background-color: #111827; /* Darker bg */ border-radius: 0.5rem;
-            margin: 1rem 0; padding: 0; overflow: hidden; border: 1px solid #374151; /* Subtle border */
+            position: relative; background-color: #111827; border-radius: 0.5rem;
+            margin: 1rem 0; padding: 0; overflow: hidden; border: 1px solid #374151;
         }
         .code-block-container .language-tag {
-            position: absolute; top: 0; left: 0; background-color: #374151; color: #9ca3af; /* Muted tag */
+            position: absolute; top: 0; left: 0; background-color: #374151; color: #9ca3af;
             padding: 0.1rem 0.5rem; font-size: 0.7rem; border-top-left-radius: 0.5rem;
             border-bottom-right-radius: 0.5rem; z-index: 10;
         }
-        .code-block-container ol { list-style-type: none; padding: 0; margin: 0; display: flex; font-size: 0.875rem; /* Adjusted font size */ }
+        .code-block-container ol { list-style-type: none; padding: 0; margin: 0; display: flex; font-size: 0.875rem; }
         .line-numbers {
-            background-color: #1f2937; /* Match modal bg */ color: #6b7280; text-align: right;
-            padding: 0.75rem 0.5rem; user-select: none; line-height: 1.6; /* Increased line height */ border-right: 1px solid #374151;
+            background-color: #1f2937; color: #6b7280; text-align: right;
+            padding: 0.75rem 0.5rem; user-select: none; line-height: 1.6; border-right: 1px solid #374151;
         }
         .code-content { flex-grow: 1; padding: 0.75rem 1rem; overflow-x: auto; }
         .code-content code {
-            display: block; white-space: pre; color: #d1d5db; line-height: 1.6; /* Match line numbers */
-            font-family: 'Fira Code', 'Courier New', Courier, monospace; /* Changed font */
+            display: block; white-space: pre; color: #d1d5db; line-height: 1.6;
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
         }
 
         /* --- STYLES FOR RETRY BUTTON --- */
         .retry-button {
-            background-color: #ef4444; /* Brighter red */ color: white; padding: 0.5rem 1rem; border-radius: 0.375rem;
+            background-color: #ef4444; color: white; padding: 0.5rem 1rem; border-radius: 0.375rem;
             cursor: pointer; font-weight: 600; margin-top: 0.5rem; transition: background-color 0.2s;
         }
         .retry-button:hover { background-color: #dc2626; }
 
         #error-retry-container-pdf,
-        #error-retry-container-ai { display: none; justify-content: center; padding: 0 1rem 0.5rem 1rem; } /* Adjusted padding */
+        #error-retry-container-ai { display: none; justify-content: center; padding: 0 1rem 0.5rem 1rem; }
 
         /* --- UI Element Styling --- */
-        #chat-sidebar { transition: transform 0.3s ease-in-out; border-right: 1px solid #1f2937; } /* Add border */
+        #chat-sidebar { transition: transform 0.3s ease-in-out; border-right: 1px solid #1f2937; }
         .tab-button { border-bottom-width: 2px; border-color: transparent; transition: color 0.2s, border-color 0.2s; }
-        .tab-button.active { border-color: #6366f1; color: #818cf8; } /* Lighter active color */
+        .tab-button.active { border-color: #6366f1; color: #818cf8; }
 
         /* Scrollbar styling */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #1f2937; border-radius: 4px;}
-        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; border: 2px solid #1f2937; } /* Add border */
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; border: 2px solid #1f2937; }
         ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
 
         /* AI Bubble Content Styling */
         .ai-bubble pre { background-color: #111827; border: 1px solid #374151; color: #d1d5db; padding: 0.75rem 1rem; border-radius: 0.5rem; overflow-x: auto; position: relative; font-size: 0.875rem; }
         .ai-bubble code { font-family: 'Fira Code', 'Courier New', Courier, monospace; }
-        .user-bubble img { max-width: 150px; border-radius: 0.5rem; margin-top: 0.5rem; border: 1px solid rgba(255,255,255,0.1); } /* Add border to images */
+        .user-bubble img { max-width: 150px; border-radius: 0.5rem; margin-top: 0.5rem; border: 1px solid rgba(255,255,255,0.1); }
 
         /* Copy Button Styling */
         .copy-button { position: absolute; top: 0.5rem; right: 0.5rem; background-color: #374151; color: #9ca3af; border: none; padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.75rem; opacity: 0; transition: opacity 0.2s, background-color 0.2s; z-index: 10;}
@@ -105,30 +105,30 @@
         .copy-button:hover { background-color: #4b5563; color: #e5e7eb; }
 
         /* Table Styling */
-        .ai-bubble table { width: 100%; margin: 1em 0; border-collapse: collapse; border: 1px solid #4b5563; border-radius: 0.5rem; overflow: hidden; /* Ensure border radius applies */ }
+        .ai-bubble table { width: 100%; margin: 1em 0; border-collapse: collapse; border: 1px solid #4b5563; border-radius: 0.5rem; overflow: hidden; }
         .ai-bubble th, .ai-bubble td { border: 1px solid #4b5563; padding: 0.6rem 0.8rem; text-align: left; }
-        .ai-bubble th { background-color: #1f2937; font-weight: 600; /* Semibold */ }
-        .ai-bubble tr:nth-child(even) { background-color: rgba(55, 65, 81, 0.5); } /* Subtle striping */
+        .ai-bubble th { background-color: #1f2937; font-weight: 600; }
+        .ai-bubble tr:nth-child(even) { background-color: rgba(55, 65, 81, 0.5); }
 
         /* --- STYLES FOR THINKING BUBBLE --- */
         .thinking-bubble {
-            background-color: #4b5563; color: #cbd5e1; display: inline-flex; /* Use inline-flex */ align-items: center;
-            padding: 0.6rem 1rem; border-radius: 1rem 1rem 1rem 0.25rem; /* Match AI bubble */ align-self: flex-start;
-            margin-right: auto; margin: 0.5rem 0; /* Consistent margin */
+            background-color: #4b5563; color: #cbd5e1; display: inline-flex; align-items: center;
+            padding: 0.6rem 1rem; border-radius: 1rem 1rem 1rem 0.25rem; align-self: flex-start;
+            margin-right: auto; margin: 0.5rem 0;
         }
-        .thinking-bubble span { margin-right: 0.5rem; } /* Space before dots */
+        .thinking-bubble span { margin-right: 0.5rem; }
         .dot-flashing {
-            position: relative; width: 6px; height: 6px; /* Smaller dots */ border-radius: 50%;
-            background-color: #9ca3af; color: #9ca3af; /* Muted color */
-            animation: dotFlashing 1s infinite linear alternate; animation-delay: .5s; margin: 0 3px; /* Adjust spacing */
+            position: relative; width: 6px; height: 6px; border-radius: 50%;
+            background-color: #9ca3af; color: #9ca3af;
+            animation: dotFlashing 1s infinite linear alternate; animation-delay: .5s; margin: 0 3px;
         }
         .dot-flashing::before, .dot-flashing::after {
             content: ''; display: inline-block; position: absolute; top: 0;
             width: 6px; height: 6px; border-radius: 50%;
             background-color: #9ca3af; color: #9ca3af;
         }
-        .dot-flashing::before { left: -12px; animation: dotFlashing 1s infinite alternate; animation-delay: 0s; } /* Adjust spacing */
-        .dot-flashing::after { left: 12px; animation: dotFlashing 1s infinite alternate; animation-delay: 1s; } /* Adjust spacing */
+        .dot-flashing::before { left: -12px; animation: dotFlashing 1s infinite alternate; animation-delay: 0s; }
+        .dot-flashing::after { left: 12px; animation: dotFlashing 1s infinite alternate; animation-delay: 1s; }
 
         @keyframes dotFlashing {
             0% { background-color: #9ca3af; }
@@ -136,13 +136,14 @@
         }
         /* --- Sidebar delete button style --- */
         .delete-chat-btn { margin-left: auto; padding: 0 0.5rem; color: #f87171; background: none; border: none; font-size: 1.25rem; line-height: 1; cursor: pointer; opacity: 0.7; transition: opacity 0.2s, color 0.2s;}
-        .delete-chat-btn:hover { color: #ef4444; opacity: 1; } /* Brighter red */
-        /* Sidebar item style */
+        .delete-chat-btn:hover { color: #ef4444; opacity: 1; }
         .sidebar-chat-item { transition: background-color 0.2s; }
 
     </style>
 </head>
-<body class="bg-slate-900 h-screen overflow-hidden text-slate-200"> <div id="auth-modal" class="modal-overlay" style="display: none;">
+<body class="bg-slate-900 h-screen overflow-hidden text-slate-200">
+
+    <div id="auth-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
             <h2 id="auth-title" class="text-2xl font-bold mb-4 text-white">Login</h2>
             <div id="auth-error" class="text-red-400 mb-2" style="display: none;"></div>
@@ -157,7 +158,8 @@
                 </div>
                 <div class="flex justify-between items-center">
                     <div>
-                        <button type="submit" id="auth-submit-button" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-white font-semibold transition duration-200 disabled:opacity-50" disabled>Login</button> <button type="button" id="auth-close-button" class="text-slate-400 hover:text-white ml-2">Cancel</button>
+                        <button type="submit" id="auth-submit-button" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-white font-semibold transition duration-200 disabled:opacity-50" disabled>Login</button>
+                        <button type="button" id="auth-close-button" class="text-slate-400 hover:text-white ml-2">Cancel</button>
                     </div>
                     <button type="button" id="auth-switch-button" class="text-sm text-indigo-400 hover:underline">Need an account? Sign up</button>
                 </div>
@@ -204,7 +206,8 @@
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-700">
                     <main id="chat-container" class="flex-1 p-4 space-y-2 overflow-y-auto"></main>
                     <div id="error-retry-container-pdf" class="bg-slate-800 px-4 pb-2"></div>
-                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700"> <div class="flex items-center space-x-2">
+                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700">
+                        <div class="flex items-center space-x-2">
                             <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-slate-500 text-white font-bold py-2 px-3 rounded-lg text-sm transition duration-200 opacity-50">📁 Upload</label>
                             <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
                             <button id="fast-mode-button-pdf" class="speed-button text-sm px-3 py-2">⚡ Fast Paste</button>
@@ -218,12 +221,15 @@
             <div id="view-ai-chat" style="display: none;" class="flex-1 flex flex-col p-4 overflow-hidden">
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-700">
                     <main id="chat-container-ai" class="flex-1 p-4 space-y-2 overflow-y-auto"></main>
-                    <div id="image-preview-container-ai" class="p-3 border-t border-slate-700 bg-slate-900/50" style="display: none;"> <div class="relative w-20 h-20"> <img id="image-preview-ai" class="w-full h-full object-cover rounded-md border border-slate-600">
+                    <div id="image-preview-container-ai" class="p-3 border-t border-slate-700 bg-slate-900/50" style="display: none;">
+                        <div class="relative w-20 h-20">
+                            <img id="image-preview-ai" class="w-full h-full object-cover rounded-md border border-slate-600">
                             <button id="remove-image-button-ai" class="absolute top-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs -mt-2 -mr-2 leading-none hover:bg-red-700">&times;</button>
                         </div>
                     </div>
                      <div id="error-retry-container-ai" class="bg-slate-800 px-4 pb-2"></div>
-                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700"> <div class="flex items-center space-x-2">
+                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700">
+                        <div class="flex items-center space-x-2">
                             <label for="image-upload-ai" class="cursor-pointer text-slate-400 hover:text-indigo-400 p-2 rounded hover:bg-slate-700 transition duration-200">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                             </label>
@@ -318,60 +324,7 @@
             const RENDER_SPEED = 10; // Milliseconds between rendering characters
             const CHARS_PER_TICK = 3; // Characters to render each interval
 
-            // --- Helper Functions ---
-
-            // *** MOVED FUNCTION *** Function to add a message bubble to the UI
-            function addMessage(text, sender, target = activeTab, imageB64 = null) {
-                 const history = target.startsWith('ai_') ? aiChatHistory : pdfChatHistory;
-                 const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
-
-                 if (target.endsWith('_thoughts')) {
-                    const bubble = document.createElement('div');
-                    bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto');
-                    const details = document.createElement('details'); details.classList.add('w-full');
-                    const summary = document.createElement('summary'); summary.textContent = '...AI is thinking... (Click to view)';
-                    const contentDiv = document.createElement('div'); contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1');
-                    details.appendChild(summary); details.appendChild(contentDiv); bubble.appendChild(details);
-                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
-                    return { bubble: bubble, contentDiv: contentDiv, summary: summary };
-                 }
-
-                 if (sender === 'system') {
-                    const bubble = document.createElement('div');
-                    bubble.classList.add('text-center', 'text-xs', 'text-slate-400', 'my-2', 'px-4');
-                    bubble.textContent = text;
-                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
-                    return { bubble: bubble, contentDiv: bubble, summary: null };
-                 }
-
-                 const bubble = document.createElement('div');
-                 bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
-                 bubble.classList.add(sender === 'user' ? 'user-bubble self-end ml-auto' : 'ai-bubble self-start mr-auto');
-
-                 const textNode = document.createElement('div');
-                 textNode.textContent = text || ''; // Ensure text content even if empty
-                 bubble.appendChild(textNode);
-
-                 if (sender === 'user' && imageB64) {
-                     const img = document.createElement('img'); img.src = `data:image/jpeg;base64,${imageB64}`;
-                     img.className = 'mt-2 rounded max-w-xs';
-                     bubble.appendChild(img);
-                 }
-
-                 container.appendChild(bubble);
-                 // Scroll to bottom using requestAnimationFrame for better timing
-                 requestAnimationFrame(() => {
-                     container.scrollTop = container.scrollHeight;
-                 });
-
-
-                 // Only add user messages to the history array here. AI messages added in finalizeStream.
-                 if (sender === 'user') {
-                     history.push({ sender, text: text || '', imageB64: imageB64 }); // Ensure text is string
-                 }
-
-                 return { bubble: bubble, contentDiv: textNode, summary: null };
-            }
+            // --- FUNCTION DEFINITIONS (All functions defined BEFORE listeners/initial calls) ---
 
             // Helper for making authenticated API calls
             async function fetchWithAuth(url, options = {}) {
@@ -678,6 +631,60 @@
                  ui.imagePreviewContainerAI.style.display = 'none'; ui.imageUploadAI.value = ''; uploadedImageB64 = null;
             }
 
+            // Function to add a message bubble to the UI
+            function addMessage(text, sender, target = activeTab, imageB64 = null) {
+                 const history = target.startsWith('ai_') ? aiChatHistory : pdfChatHistory;
+                 const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
+
+                 if (target.endsWith('_thoughts')) {
+                    const bubble = document.createElement('div');
+                    bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto');
+                    const details = document.createElement('details'); details.classList.add('w-full');
+                    const summary = document.createElement('summary'); summary.textContent = '...AI is thinking... (Click to view)';
+                    const contentDiv = document.createElement('div'); contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1');
+                    details.appendChild(summary); details.appendChild(contentDiv); bubble.appendChild(details);
+                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
+                    return { bubble: bubble, contentDiv: contentDiv, summary: summary };
+                 }
+
+                 if (sender === 'system') {
+                    const bubble = document.createElement('div');
+                    bubble.classList.add('text-center', 'text-xs', 'text-slate-400', 'my-2', 'px-4');
+                    bubble.textContent = text;
+                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
+                    return { bubble: bubble, contentDiv: bubble, summary: null };
+                 }
+
+                 const bubble = document.createElement('div');
+                 bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
+                 bubble.classList.add(sender === 'user' ? 'user-bubble self-end ml-auto' : 'ai-bubble self-start mr-auto');
+
+                 const textNode = document.createElement('div');
+                 textNode.textContent = text || ''; // Ensure text content even if empty
+                 bubble.appendChild(textNode);
+
+                 if (sender === 'user' && imageB64) {
+                     const img = document.createElement('img'); img.src = `data:image/jpeg;base64,${imageB64}`;
+                     img.className = 'mt-2 rounded max-w-xs';
+                     bubble.appendChild(img);
+                 }
+
+                 container.appendChild(bubble);
+                 // Scroll to bottom using requestAnimationFrame for better timing
+                 requestAnimationFrame(() => {
+                     container.scrollTop = container.scrollHeight;
+                 });
+
+
+                 // Only add user messages to the history array here. AI messages added in finalizeStream.
+                 if (sender === 'user') {
+                     history.push({ sender, text: text || '', imageB64: imageB64 }); // Ensure text is string
+                 }
+
+                 return { bubble: bubble, contentDiv: textNode, summary: null };
+            }
+
+
             function handleServerMessage(message) {
                  const targetKey = message.target || activeTab;
                  const isThought = targetKey.endsWith('_thoughts');
@@ -687,9 +694,9 @@
                     case 'status':
                         removeThinkingBubble();
                         addMessage(message.data, 'system', mainTarget);
-                        if (message.data.includes("Ready for questions") && activeTab === 'pdf_chat') {
+                        if (message.data.includes("Ready for questions") && activeTab === 'pdf_chat') { // Only update if PDF tab active
                              setUIState('ready_to_chat', `Ready: ${currentPDFName}`);
-                        } else if (!message.data.includes("Processing")) {
+                        } else if (!message.data.includes("Processing")) { // If status is not 'processing', assume worker is generally ready
                             // Check WebSocket state before assuming worker is ready
                             if (socket && socket.readyState === WebSocket.OPEN) {
                                 setUIState('worker_ready', 'AI worker connected.');
@@ -718,9 +725,10 @@
                         finalizeStream(mainTarget, true);
                         showRetryButton(mainTarget, message.data || "An unknown error occurred.");
                         cleanupStreaming();
+                        // Restore UI state based on current context
                         if (currentPDFName && activeTab === 'pdf_chat') { setUIState('ready_to_chat', `Ready: ${currentPDFName}`); }
                         else if (socket && socket.readyState === WebSocket.OPEN) { setUIState('worker_ready', 'AI worker connected.'); }
-                        else { setUIState('error', 'Connection error occurred.'); }
+                        else { setUIState('error', 'Connection error occurred.'); } // Set error state if WS is down
                         break;
                     case 'pong': break;
                     default: console.warn("⚠️ Unknown message type:", message.type, message); removeThinkingBubble();
@@ -743,7 +751,7 @@
                      if (!isThought && !state.bubble) {
                          if (!streamingState[thoughtKey] || streamingState[thoughtKey].ended) {
                              const answerElements = addMessage('', 'ai', mainChatKey);
-                             if(answerElements) Object.assign(state, answerElements);
+                             if(answerElements) Object.assign(state, answerElements); // Assign only if bubble created
                          } else { continue; }
                      }
 
@@ -757,6 +765,7 @@
                             state.contentDiv.querySelectorAll('pre').forEach(pre => {
                                 if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
                                     const codeText = pre.textContent;
+                                    // Stricter check for fenced code blocks
                                     if (codeText.trim().startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
                                         pre.outerHTML = renderCodeBlock(codeText);
                                     }
@@ -766,12 +775,12 @@
                         }
 
                         const container = key.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
-                        if (container.scrollHeight - container.scrollTop <= container.clientHeight + 150) { container.scrollTop = container.scrollHeight; }
+                        if (container.scrollHeight - container.scrollTop <= container.clientHeight + 150) { container.scrollTop = container.scrollHeight; } // Increased buffer
                     }
 
                     if (state.ended && state.textBuffer.length === 0) {
                         finalizeStream(key);
-                        anyActiveStreams = Object.values(streamingState).some(s => s?.active);
+                        anyActiveStreams = Object.values(streamingState).some(s => s?.active); // Re-check after finalize
                     }
                 }
 
@@ -855,9 +864,9 @@
                 const targetChatContainer = tab === 'pdf_chat' ? ui.chatContainer : ui.chatContainerAI;
                 removeThinkingBubble();
 
-                errorContainer.innerHTML = ''; // Clear previous button
+                errorContainer.innerHTML = ''; // Clear previous retry button
                  const existingErrorBubbles = targetChatContainer.querySelectorAll('.error-bubble-container');
-                 existingErrorBubbles.forEach(b => b.remove()); // Clear previous messages
+                 existingErrorBubbles.forEach(b => b.remove()); // Clear previous error messages
 
 
                 const errorBubbleContainer = document.createElement('div');
@@ -1163,6 +1172,34 @@
                      renderInterval = setInterval(renderCharacters, fastMode ? 1 : RENDER_SPEED);
                 }
              }
+
+             function renderCodeBlock(codeText) {
+                const lines = codeText.trim().split('\n');
+                const langMatch = lines[0].match(/```(\w+)/);
+                const language = langMatch ? langMatch[1] : '';
+                // Handle case where ``` is alone on the first line
+                const codeStartIndex = langMatch ? 1 : (lines[0].trim() === '```' ? 1 : 0);
+                // Handle case where ``` is alone on the last line
+                const codeEndIndex = lines[lines.length - 1].trim() === '```' ? lines.length - 1 : lines.length;
+                const codeLines = lines.slice(codeStartIndex, codeEndIndex).join('\n'); // Ensure only code lines are joined
+
+                const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                // Create HTML structure for code lines
+                const codeHtml = codeLines.split('\n').map(line => `<code>${escapeHtml(line)}</code>`).join('\n'); // Use newline in HTML source for structure
+                // Create line numbers
+                const lineNumbers = Array.from({ length: codeLines.split('\n').length }, (_, i) => i + 1).join('\n');
+
+                return `
+                    <div class="code-block-container">
+                        ${language ? `<span class="language-tag">${language}</span>` : ''}
+                        <ol>
+                            <li class="line-numbers"><pre>${lineNumbers}</pre></li>
+                            <li class="code-content"><pre>${codeHtml}</pre></li>
+                        </ol>
+                        <button class="copy-button">Copy</button>
+                    </div>
+                `;
+            }
 
             // --- Event Listeners (FINAL PLACEMENT) ---
             ui.tabChatPDF.addEventListener('click', () => {
