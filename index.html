@@ -367,7 +367,15 @@
 
                  const bubble = document.createElement('div');
                  bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
-                 bubble.classList.add(sender === 'user' ? 'user-bubble self-end ml-auto' : 'ai-bubble self-start mr-auto');
+
+                 // *** THIS IS THE FIX ***
+                 // Instead of adding one long string with spaces, we add the classes correctly.
+                 if (sender === 'user') {
+                     bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
+                 } else {
+                     bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                 }
+                 // *** END OF FIX ***
 
                  const textNode = document.createElement('div');
                  textNode.textContent = text || ''; // Ensure text content even if empty
@@ -1184,6 +1192,72 @@
                      renderInterval = setInterval(renderCharacters, fastMode ? 1 : RENDER_SPEED);
                 }
              }
+             
+             function renderCodeBlock(codeText) {
+                const lines = codeText.trim().split('\n');
+                const langMatch = lines[0].match(/```(\w+)/);
+                const language = langMatch ? langMatch[1] : '';
+                const codeLines = lines.slice(1, lines.length - 1).join('\n');
+                const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const codeHtml = codeLines.split('\n').map(line => `<code>${escapeHtml(line)}</code>`).join('');
+                const lineNumbers = codeLines.split('\n').map((_, index) => index + 1).join('\n');
+                return `
+                    <div class="code-block-container">
+                        ${language ? `<span class="language-tag">${language}</span>` : ''}
+                        <ol>
+                            <li class="line-numbers"><pre>${lineNumbers}</pre></li>
+                            <li class="code-content"><pre>${codeHtml}</pre></li>
+                        </ol>
+                        <button class="copy-button">Copy</button>
+                    </div>
+                `;
+            }
+            
+            function addCopyButtonsTo(containerElement) {
+                containerElement.querySelectorAll('.code-block-container').forEach(blockContainer => {
+                    // Check if a button has already been attached to avoid duplicates
+                    if (blockContainer.querySelector('.copy-button.attached')) return;
+                    
+                    const codeElement = blockContainer.querySelector('.code-content code');
+                    if (!codeElement) return;
+                    
+                    const button = blockContainer.querySelector('.copy-button');
+                    if (button) {
+                        button.classList.add('attached'); // Mark as attached
+                        button.addEventListener('click', () => {
+                            const code = codeElement.innerText; // Get text from the code element
+                            navigator.clipboard.writeText(code).then(() => {
+                                button.textContent = 'Copied!';
+                                setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+                            });
+                        });
+                    }
+                });
+                
+                // Also add copy buttons to regular <pre> tags that aren't part of a line-numbered block
+                containerElement.querySelectorAll('pre').forEach(block => {
+                    if (block.closest('.code-block-container')) return; // Already handled
+                    if (block.querySelector('.copy-button.attached')) return; // Already attached
+                    
+                    const button = document.createElement('button');
+                    button.className = 'copy-button attached'; // Add 'attached'
+                    button.textContent = 'Copy';
+                    block.appendChild(button);
+                    
+                    button.addEventListener('click', () => {
+                        // Get text, attempting to find a <code> tag first
+                        const code = block.querySelector('code')?.innerText || block.innerText;
+                        // Clean the "Copy" text out if it got included
+                        const cleanedCode = code.replace(/Copy$/, '').trim(); 
+                        
+                        navigator.clipboard.writeText(cleanedCode).then(() => {
+                            button.textContent = 'Copied!';
+                            setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+                        });
+                    });
+                });
+            }
+
             // --- Event Listeners (FINAL PLACEMENT) ---
             ui.tabChatPDF.addEventListener('click', () => {
                  if (activeTab === 'pdf_chat') return;
@@ -1211,7 +1285,6 @@
             });
             ui.sendButton.addEventListener('click', () => sendMessage(ui.messageInput.value, 'pdf_chat'));
             ui.messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(ui.messageInput.value, 'pdf_chat'); } });
-            // Corrected the variable name in the line below
             ui.sendButtonAI.addEventListener('click', () => sendMessage(ui.messageInputAI.value, 'ai_chat', uploadedImageB64));
             ui.messageInputAI.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(ui.messageInputAI.value, 'ai_chat', uploadedImageB64); } });
             ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
@@ -1239,3 +1312,4 @@
     </script>
 </body>
 </html>
+
