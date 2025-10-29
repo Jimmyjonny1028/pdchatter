@@ -1184,7 +1184,6 @@
                      renderInterval = setInterval(renderCharacters, fastMode ? 1 : RENDER_SPEED);
                 }
              }
-
             // --- Event Listeners (FINAL PLACEMENT) ---
             ui.tabChatPDF.addEventListener('click', () => {
                  if (activeTab === 'pdf_chat') return;
@@ -1212,7 +1211,8 @@
             });
             ui.sendButton.addEventListener('click', () => sendMessage(ui.messageInput.value, 'pdf_chat'));
             ui.messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(ui.messageInput.value, 'pdf_chat'); } });
-            ui.sendButtonAI.addEventListener('click', () => sendMessage(ui.messageInputAI.value, 'ai_chat', uploadedImageB6Player));
+            // Corrected the variable name in the line below
+            ui.sendButtonAI.addEventListener('click', () => sendMessage(ui.messageInputAI.value, 'ai_chat', uploadedImageB64));
             ui.messageInputAI.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(ui.messageInputAI.value, 'ai_chat', uploadedImageB64); } });
             ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
             ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
