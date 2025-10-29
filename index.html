@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Toolkit</title>
-    <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         /* Base styles */
@@ -144,10 +142,7 @@
 
     </style>
 </head>
-<body class="bg-slate-900 h-screen overflow-hidden text-slate-200"> <!-- Dark theme body -->
-
-    <!-- Authentication Modal -->
-    <div id="auth-modal" class="modal-overlay" style="display: none;">
+<body class="bg-slate-900 h-screen overflow-hidden text-slate-200"> <div id="auth-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
             <h2 id="auth-title" class="text-2xl font-bold mb-4 text-white">Login</h2>
             <div id="auth-error" class="text-red-400 mb-2" style="display: none;"></div>
@@ -162,8 +157,7 @@
                 </div>
                 <div class="flex justify-between items-center">
                     <div>
-                        <button type="submit" id="auth-submit-button" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-white font-semibold transition duration-200 disabled:opacity-50" disabled>Login</button> <!-- Start disabled -->
-                        <button type="button" id="auth-close-button" class="text-slate-400 hover:text-white ml-2">Cancel</button>
+                        <button type="submit" id="auth-submit-button" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-white font-semibold transition duration-200 disabled:opacity-50" disabled>Login</button> <button type="button" id="auth-close-button" class="text-slate-400 hover:text-white ml-2">Cancel</button>
                     </div>
                     <button type="button" id="auth-switch-button" class="text-sm text-indigo-400 hover:underline">Need an account? Sign up</button>
                 </div>
@@ -171,10 +165,8 @@
         </div>
     </div>
 
-    <!-- Main Flex Container -->
     <div class="flex h-full">
 
-        <!-- Sidebar -->
         <aside id="chat-sidebar" class="w-64 bg-slate-800 text-slate-100 flex flex-col p-4 transform -translate-x-full fixed h-full z-20 shadow-lg border-r border-slate-700">
             <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
                 <h2 id="sidebar-title" class="text-xl font-semibold">Saved Chats</h2>
@@ -185,9 +177,7 @@
             <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-1 pr-1"></div>
         </aside>
 
-        <!-- Main Content Area -->
         <div class="flex-1 flex flex-col h-full bg-slate-900">
-            <!-- Header -->
             <header class="bg-slate-800 shadow-md p-4 flex items-center justify-between z-10 border-b border-slate-700">
                 <div class="flex items-center space-x-4">
                     <button id="open-sidebar-button" class="p-2 rounded-md text-slate-300 hover:bg-slate-700 hover:text-white transition duration-200">
@@ -206,19 +196,15 @@
                 </div>
             </header>
 
-            <!-- ChatPDF View -->
             <div id="view-chatpdf" class="flex-1 grid md:grid-cols-2 gap-4 p-4 overflow-hidden">
-                <!-- PDF Viewer Section -->
                 <section class="bg-slate-700 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-600">
                     <div class="p-2 border-b border-slate-600 bg-slate-800"><h2 id="pdf-title" class="text-lg font-semibold text-slate-200 truncate">PDF Preview</h2></div>
                     <div class="flex-1 p-2 bg-slate-600"><embed id="pdf-viewer" src="" type="application/pdf" width="100%" height="100%"/></div>
                 </section>
-                <!-- ChatPDF Chat Section -->
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-700">
                     <main id="chat-container" class="flex-1 p-4 space-y-2 overflow-y-auto"></main>
                     <div id="error-retry-container-pdf" class="bg-slate-800 px-4 pb-2"></div>
-                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700"> <!-- Reduced padding -->
-                        <div class="flex items-center space-x-2">
+                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700"> <div class="flex items-center space-x-2">
                             <label for="pdf-upload" id="upload-label" class="cursor-not-allowed bg-slate-500 text-white font-bold py-2 px-3 rounded-lg text-sm transition duration-200 opacity-50">📁 Upload</label>
                             <input id="pdf-upload" type="file" class="hidden" accept=".pdf" disabled>
                             <button id="fast-mode-button-pdf" class="speed-button text-sm px-3 py-2">⚡ Fast Paste</button>
@@ -229,21 +215,15 @@
                 </section>
             </div>
 
-            <!-- AI Chat View -->
             <div id="view-ai-chat" style="display: none;" class="flex-1 flex flex-col p-4 overflow-hidden">
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-700">
                     <main id="chat-container-ai" class="flex-1 p-4 space-y-2 overflow-y-auto"></main>
-                    <!-- Image Preview Area -->
-                    <div id="image-preview-container-ai" class="p-3 border-t border-slate-700 bg-slate-900/50" style="display: none;"> <!-- Reduced padding -->
-                        <div class="relative w-20 h-20"> <!-- Smaller preview -->
-                            <img id="image-preview-ai" class="w-full h-full object-cover rounded-md border border-slate-600">
+                    <div id="image-preview-container-ai" class="p-3 border-t border-slate-700 bg-slate-900/50" style="display: none;"> <div class="relative w-20 h-20"> <img id="image-preview-ai" class="w-full h-full object-cover rounded-md border border-slate-600">
                             <button id="remove-image-button-ai" class="absolute top-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs -mt-2 -mr-2 leading-none hover:bg-red-700">&times;</button>
                         </div>
                     </div>
                      <div id="error-retry-container-ai" class="bg-slate-800 px-4 pb-2"></div>
-                    <!-- Footer Input Area -->
-                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700"> <!-- Reduced padding -->
-                        <div class="flex items-center space-x-2">
+                    <footer class="bg-slate-900/80 p-3 border-t border-slate-700"> <div class="flex items-center space-x-2">
                             <label for="image-upload-ai" class="cursor-pointer text-slate-400 hover:text-indigo-400 p-2 rounded hover:bg-slate-700 transition duration-200">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                             </label>
@@ -339,6 +319,59 @@
             const CHARS_PER_TICK = 3; // Characters to render each interval
 
             // --- Helper Functions ---
+
+            // *** MOVED FUNCTION *** Function to add a message bubble to the UI
+            function addMessage(text, sender, target = activeTab, imageB64 = null) {
+                 const history = target.startsWith('ai_') ? aiChatHistory : pdfChatHistory;
+                 const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
+
+                 if (target.endsWith('_thoughts')) {
+                    const bubble = document.createElement('div');
+                    bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto');
+                    const details = document.createElement('details'); details.classList.add('w-full');
+                    const summary = document.createElement('summary'); summary.textContent = '...AI is thinking... (Click to view)';
+                    const contentDiv = document.createElement('div'); contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1');
+                    details.appendChild(summary); details.appendChild(contentDiv); bubble.appendChild(details);
+                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
+                    return { bubble: bubble, contentDiv: contentDiv, summary: summary };
+                 }
+
+                 if (sender === 'system') {
+                    const bubble = document.createElement('div');
+                    bubble.classList.add('text-center', 'text-xs', 'text-slate-400', 'my-2', 'px-4');
+                    bubble.textContent = text;
+                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
+                    return { bubble: bubble, contentDiv: bubble, summary: null };
+                 }
+
+                 const bubble = document.createElement('div');
+                 bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
+                 bubble.classList.add(sender === 'user' ? 'user-bubble self-end ml-auto' : 'ai-bubble self-start mr-auto');
+
+                 const textNode = document.createElement('div');
+                 textNode.textContent = text || ''; // Ensure text content even if empty
+                 bubble.appendChild(textNode);
+
+                 if (sender === 'user' && imageB64) {
+                     const img = document.createElement('img'); img.src = `data:image/jpeg;base64,${imageB64}`;
+                     img.className = 'mt-2 rounded max-w-xs';
+                     bubble.appendChild(img);
+                 }
+
+                 container.appendChild(bubble);
+                 // Scroll to bottom using requestAnimationFrame for better timing
+                 requestAnimationFrame(() => {
+                     container.scrollTop = container.scrollHeight;
+                 });
+
+
+                 // Only add user messages to the history array here. AI messages added in finalizeStream.
+                 if (sender === 'user') {
+                     history.push({ sender, text: text || '', imageB64: imageB64 }); // Ensure text is string
+                 }
+
+                 return { bubble: bubble, contentDiv: textNode, summary: null };
+            }
 
             // Helper for making authenticated API calls
             async function fetchWithAuth(url, options = {}) {
@@ -644,60 +677,6 @@
                  ui.messageInput.value = ''; ui.messageInputAI.value = ''; // Clear inputs
                  ui.imagePreviewContainerAI.style.display = 'none'; ui.imageUploadAI.value = ''; uploadedImageB64 = null;
             }
-
-            // Function to add a message bubble to the UI
-            function addMessage(text, sender, target = activeTab, imageB64 = null) {
-                 const history = target.startsWith('ai_') ? aiChatHistory : pdfChatHistory;
-                 const container = target.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
-
-                 if (target.endsWith('_thoughts')) {
-                    const bubble = document.createElement('div');
-                    bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto');
-                    const details = document.createElement('details'); details.classList.add('w-full');
-                    const summary = document.createElement('summary'); summary.textContent = '...AI is thinking... (Click to view)';
-                    const contentDiv = document.createElement('div'); contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1');
-                    details.appendChild(summary); details.appendChild(contentDiv); bubble.appendChild(details);
-                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
-                    return { bubble: bubble, contentDiv: contentDiv, summary: summary };
-                 }
-
-                 if (sender === 'system') {
-                    const bubble = document.createElement('div');
-                    bubble.classList.add('text-center', 'text-xs', 'text-slate-400', 'my-2', 'px-4');
-                    bubble.textContent = text;
-                    container.appendChild(bubble); container.scrollTop = container.scrollHeight;
-                    return { bubble: bubble, contentDiv: bubble, summary: null };
-                 }
-
-                 const bubble = document.createElement('div');
-                 bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
-                 bubble.classList.add(sender === 'user' ? 'user-bubble self-end ml-auto' : 'ai-bubble self-start mr-auto');
-
-                 const textNode = document.createElement('div');
-                 textNode.textContent = text || ''; // Ensure text content even if empty
-                 bubble.appendChild(textNode);
-
-                 if (sender === 'user' && imageB64) {
-                     const img = document.createElement('img'); img.src = `data:image/jpeg;base64,${imageB64}`;
-                     img.className = 'mt-2 rounded max-w-xs';
-                     bubble.appendChild(img);
-                 }
-
-                 container.appendChild(bubble);
-                 // Scroll to bottom using requestAnimationFrame for better timing
-                 requestAnimationFrame(() => {
-                     container.scrollTop = container.scrollHeight;
-                 });
-
-
-                 // Only add user messages to the history array here. AI messages added in finalizeStream.
-                 if (sender === 'user') {
-                     history.push({ sender, text: text || '', imageB64: imageB64 }); // Ensure text is string
-                 }
-
-                 return { bubble: bubble, contentDiv: textNode, summary: null };
-            }
-
 
             function handleServerMessage(message) {
                  const targetKey = message.target || activeTab;
