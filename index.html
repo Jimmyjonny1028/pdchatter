@@ -25,8 +25,8 @@
             background-color: #1f2937; /* Dark gray */ padding: 2rem; border-radius: 0.75rem; /* More rounded */
             width: 90%; max-width: 400px; color: #d1d5db; /* Light gray text */ box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        .modal-content input { background-color: #374151; border: 1px solid #4b5563; color: white; } /* Dark inputs */
-        .modal-content label { color: #9ca3af; } /* Muted label color */
+        .modal-content input { background-color: #374151; border: 1px solid #4b5563; color: white; padding: 0.5rem; /* Added padding */ border-radius: 0.375rem; /* Added rounding */ }
+        .modal-content label { color: #9ca3af; margin-bottom: 0.25rem; display: block; /* Ensure label takes space */ }
 
         /* --- STYLES FOR THOUGHTS BUBBLE --- */
         .thoughts-bubble {
@@ -381,10 +381,6 @@
                     ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim());
                  }
             }
-            // Add input event listeners to enable/disable auth submit button
-            ui.usernameInput.addEventListener('input', () => { ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim()); });
-            ui.passwordInput.addEventListener('input', () => { ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim()); });
-
 
             function updateAuthUI() {
                 const token = localStorage.getItem('ai_toolkit_token');
@@ -559,12 +555,6 @@
 
             // --- UI State & Display ---
             function setUIState(state, message = "") {
-                 // Prevent UI updates if socket is closing or closed after logout and user logged out
-                //if (!localStorage.getItem('ai_toolkit_token') && (!socket || socket.readyState === WebSocket.CLOSED) && state !== 'disconnected' && state !== 'error') {
-                //     console.log("Preventing UI update after logout.");
-                //     return;
-                //}
-
                 ui.status.textContent = `Status: ${message}`;
                 const isChatReady = state === 'ready_to_chat';
                 const isWorkerReady = state === 'worker_ready' || isChatReady;
@@ -594,7 +584,7 @@
                 ui.sendButton.classList.toggle('hover:bg-indigo-700', canUsePdfChat);
                 ui.messageInput.placeholder = canUsePdfChat ? "Ask a question about the PDF..." :
                                                isPdfStreaming ? "AI is processing..." :
-                                               !isConnected ? "Connecting..." :
+                                               !isConnected ? "Connecting..." : // Changed from !isWorkerReady
                                                state === 'processing' ? `Processing '${currentPDFName}'...` :
                                                "Upload a PDF to begin...";
 
@@ -643,7 +633,7 @@
                  showThinkingBubble(tab);
 
                  const historyForWorker = history.map(msg => ({ sender: msg.sender, text: msg.text }))
-                                              .slice(0, isRetry ? undefined : -1);
+                                              .slice(0, isRetry ? undefined : -1); // Exclude current user message unless retry
 
                  let payloadData = { question: trimmedQuestion, history: historyForWorker }; // Send trimmed question
                  let taskType = tab === 'pdf_chat' ? 'ask' : (imageB64 ? 'general_chat_with_image' : 'general_chat');
@@ -743,12 +733,12 @@
                         }
 
                         const container = key.startsWith('ai_') ? ui.chatContainerAI : ui.chatContainer;
-                        if (container.scrollHeight - container.scrollTop <= container.clientHeight + 150) { container.scrollTop = container.scrollHeight; }
+                        if (container.scrollHeight - container.scrollTop <= container.clientHeight + 150) { container.scrollTop = container.scrollHeight; } // Increased buffer
                     }
 
                     if (state.ended && state.textBuffer.length === 0) {
                         finalizeStream(key);
-                        anyActiveStreams = Object.values(streamingState).some(s => s?.active);
+                        anyActiveStreams = Object.values(streamingState).some(s => s?.active); // Re-check after finalize
                     }
                 }
 
@@ -802,18 +792,23 @@
 
 
                  cleanupStreaming(target);
+                 // UI state update is handled by renderCharacters interval cleanup
             }
 
             function cleanupStreaming(target) {
                  const isThought = target?.endsWith('_thoughts');
-                 if (!isThought && target?.endsWith('_chat')) { removeThinkingBubble(); }
+                 if (!isThought && target?.endsWith('_chat')) { // Only remove thinking bubble if main chat stream ends
+                      removeThinkingBubble();
+                  }
 
-                if (!target) {
-                     removeThinkingBubble();
+                if (!target) { // Cleanup all
+                     removeThinkingBubble(); // Ensure removal
                      Object.keys(streamingState).forEach(key => {
-                         if (streamingState[key]) { streamingState[key] = { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false }; }
+                         if (streamingState[key]) { // Check key exists
+                             streamingState[key] = { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false };
+                         }
                      });
-                 } else if (streamingState[target]) {
+                 } else if (streamingState[target]) { // Cleanup specific
                      streamingState[target] = { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false };
                  }
 
@@ -827,13 +822,14 @@
                 const targetChatContainer = tab === 'pdf_chat' ? ui.chatContainer : ui.chatContainerAI;
                 removeThinkingBubble();
 
-                errorContainer.innerHTML = ''; // Clear previous button
+                errorContainer.innerHTML = ''; // Clear previous retry button
                  const existingErrorBubbles = targetChatContainer.querySelectorAll('.error-bubble-container');
-                 existingErrorBubbles.forEach(b => b.remove()); // Clear previous messages
+                 existingErrorBubbles.forEach(b => b.remove()); // Clear previous error messages
 
 
                 const errorBubbleContainer = document.createElement('div');
                 errorBubbleContainer.className = 'error-bubble-container flex justify-start mb-2 px-4 w-full';
+                 // Sanitize error message slightly for display
                 const displayError = String(errorMsg).replace(/</g, "&lt;").replace(/>/g, "&gt;");
                 errorBubbleContainer.innerHTML = `<div class="chat-bubble bg-red-600 text-white p-3 rounded-lg ai-bubble"> **🚨 ERROR**: ${displayError} </div>`;
                 targetChatContainer.appendChild(errorBubbleContainer);
@@ -859,7 +855,7 @@
                 const errorBubbles = chatContainer.querySelectorAll('.error-bubble-container');
                 errorBubbles.forEach(b => b.remove());
 
-                sendMessage(lastUserMessageText, tab, lastUserMessageImageB64, true);
+                sendMessage(lastUserMessageText, tab, lastUserMessageImageB64, true); // Send as retry
             }
 
             // --- Chat History Management ---
@@ -891,6 +887,7 @@
 
                 if (token) {
                     try {
+                        // Debounce saving? Or save on every AI response. Let's save on every response for now.
                         await fetchWithAuth(`${RENDER_API_BASE_URL}/chats`, { method: 'POST', body: JSON.stringify(chatData) });
                         console.log("Chat saved to backend:", chatId);
                     } catch (error) { /* Error logged by fetchWithAuth */ }
@@ -904,7 +901,7 @@
             async function loadSavedChats() { /* ... (Uses fetchWithAuth) ... */
                 const token = localStorage.getItem('ai_toolkit_token');
                 ui.sidebarTitle.textContent = activeTab === 'pdf_chat' ? "Saved PDF Chats" : "Saved AI Chats";
-                ui.savedChatsList.innerHTML = '<p class="text-slate-400 text-sm px-2">Loading...</p>';
+                ui.savedChatsList.innerHTML = '<p class="text-slate-400 text-sm px-2">Loading...</p>'; // Loading indicator
                 let chats = [];
 
                 try {
@@ -992,8 +989,6 @@
                 } catch (error) {
                      console.error("Failed to load chat:", error);
                      addMessage(`Error: Could not load chat. ${error.message}`, 'system', activeTab);
-                     // Optionally start a new chat if loading fails badly
-                     // startNewChat();
                  }
              }
 
@@ -1008,71 +1003,89 @@
                     const currentChatIdKey = activeTab === 'ai_chat' ? 'currentAIChatId' : 'currentPdfChatId';
                     const currentChatId = sessionStorage.getItem(currentChatIdKey);
 
-                    if (currentChatId === chatIdToDelete) { startNewChat(); }
-                     else { loadSavedChats(); } // Refresh list only if deleted chat wasn't active
+                    if (currentChatId === chatIdToDelete) { startNewChat(); } // If deleting active chat, clear view
+                     else { loadSavedChats(); } // Otherwise, just refresh the list
 
                 } catch (error) { /* Error logged by fetchWithAuth */ }
              }
 
              function startNewChat() {
                  const currentChatIdKey = activeTab === 'ai_chat' ? 'currentAIChatId' : 'currentPdfChatId';
-                 sessionStorage.removeItem(currentChatIdKey);
+                 sessionStorage.removeItem(currentChatIdKey); // Clear active chat ID
 
-                 if (activeTab === 'pdf_chat') { pdfChatHistory = []; currentPDFName = null; ui.chatContainer.innerHTML = ''; ui.pdfTitle.textContent = 'PDF Preview'; ui.pdfViewer.src = ''; }
-                 else { aiChatHistory = []; ui.chatContainerAI.innerHTML = ''; }
+                 // Clear history arrays and UI specific to the active tab
+                 if (activeTab === 'pdf_chat') {
+                     pdfChatHistory = []; currentPDFName = null;
+                     ui.chatContainer.innerHTML = ''; ui.pdfTitle.textContent = 'PDF Preview'; ui.pdfViewer.src = '';
+                 } else {
+                     aiChatHistory = []; ui.chatContainerAI.innerHTML = '';
+                 }
 
-                 cleanupStreaming();
+                 cleanupStreaming(); // Clear any active streams
                  ui.messageInput.value = ''; ui.messageInputAI.value = '';
                  ui.imagePreviewContainerAI.style.display = 'none'; ui.imageUploadAI.value = ''; uploadedImageB64 = null;
-                 ui.errorRetryContainerPdf.style.display = 'none'; ui.errorRetryContainerAi.style.display = 'none';
+                 ui.errorRetryContainerPdf.style.display = 'none'; ui.errorRetryContainerAi.style.display = 'none'; // Hide errors
 
-                 // Re-check status, don't assume connection state
+                 // Re-check status to potentially enable inputs, but don't force 'worker_ready'
+                 // Let the checkWorkerStatus -> connectWebSocket -> onmessage flow handle the final UI state
                  checkWorkerStatus();
-                 loadSavedChats();
+                 loadSavedChats(); // Refresh sidebar (will show 'No chats' if empty after clearing)
              }
 
             // --- Other UI Handlers ---
              function renderHistory(history, target = 'pdf_chat') {
                  const container = (target === 'ai_chat') ? ui.chatContainerAI : ui.chatContainer;
-                 container.innerHTML = '';
+                 container.innerHTML = ''; // Clear before rendering
                  if (!history || history.length === 0) { return; }
 
                  history.forEach(msg => {
-                     if (!msg || !msg.sender) return;
+                     if (!msg || !msg.sender) return; // Skip invalid messages
                      const bubble = document.createElement('div');
                      if (msg.sender === 'system') {
-                          bubble.classList.add('text-center', 'text-xs', 'text-slate-400', 'my-2', 'px-4');
+                          bubble.classList.add('text-center', 'text-xs', 'text-slate-400', 'my-2', 'px-4'); // Add padding
                           bubble.textContent = msg.text;
                      } else {
-                         bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
+                         bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1'); // Simplified classes
                          bubble.classList.add(msg.sender === 'user' ? 'user-bubble self-end ml-auto' : 'ai-bubble self-start mr-auto');
 
                          const textNode = document.createElement('div');
                          if (msg.sender === 'ai') {
+                              // Use try-catch for marked.parse
                               let finalHtml = '';
-                              try { finalHtml = marked.parse(msg.text || ''); }
-                              catch(e) { console.error("Markdown parsing error:", e); finalHtml = (msg.text || '').replace(/</g, "&lt;").replace(/>/g, "&gt;"); } // Basic escape on error
+                              try {
+                                   finalHtml = marked.parse(msg.text || '');
+                              } catch(e) {
+                                   console.error("Markdown parsing error:", e);
+                                   finalHtml = (msg.text || '').replace(/</g, "&lt;").replace(/>/g, "&gt;"); // Basic escape on error
+                              }
 
                               const tempDiv = document.createElement('div'); tempDiv.innerHTML = finalHtml;
                               tempDiv.querySelectorAll('pre:not(.line-numbers pre):not(.code-content pre)').forEach(pre => {
                                   if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
-                                      const codeText = pre.textContent.replace(/Copy$/,'').trim();
-                                      if (codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) { pre.outerHTML = renderCodeBlock(codeText); }
+                                      const codeText = pre.textContent.replace(/Copy$/,'').trim(); // More robustly remove 'Copy'
+                                      // Check if it looks like a fenced block more reliably
+                                      if (codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
+                                           pre.outerHTML = renderCodeBlock(codeText);
+                                      }
                                   }
                               });
                               finalHtml = tempDiv.innerHTML; textNode.innerHTML = finalHtml;
+                              // Defer copy button attachment slightly
                               setTimeout(() => addCopyButtonsTo(bubble), 10);
-                         } else { textNode.textContent = msg.text || ''; }
+                         } else { textNode.textContent = msg.text || ''; } // User messages plain text, handle undefined
                          bubble.appendChild(textNode);
                          if (msg.sender === 'user' && msg.imageB64) {
                              const img = document.createElement('img'); img.src = `data:image/jpeg;base64,${msg.imageB64}`;
-                              img.className = 'mt-2 rounded max-w-xs';
+                              img.className = 'mt-2 rounded max-w-xs'; // Style image
                              bubble.appendChild(img);
                          }
                      }
                      container.appendChild(bubble);
                  });
-                 requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+                 // Scroll to bottom after rendering
+                 requestAnimationFrame(() => { // Use requestAnimationFrame for smoother scroll after render
+                    container.scrollTop = container.scrollHeight;
+                 });
              }
 
 
@@ -1085,7 +1098,7 @@
                 addMessage(`Uploading "${file.name}"...`, 'system', 'pdf_chat');
                 let user_id; const token = localStorage.getItem('ai_toolkit_token');
                 if (token) { const payload = JSON.parse(atob(token.split('.')[1])); user_id = payload.sub; }
-                else { user_id = guestId; }
+                else { user_id = guestId; } // Use current guestId
                 const formData = new FormData(); formData.append('file', file);
                 try {
                     const response = await fetch(`${RENDER_API_BASE_URL}/upload/${user_id}`, { method: 'POST', body: formData });
@@ -1094,7 +1107,8 @@
                         try { errorData = await response.json(); } catch { errorData = { detail: response.statusText }; }
                         throw new Error(errorData.detail || 'Failed to start PDF processing.');
                     }
-                } catch (error) { addMessage(`Upload Error: ${error.message}`, 'system', 'pdf_chat'); setUIState('worker_ready', 'Upload failed.'); currentPDFName = null; ui.pdfTitle.textContent = 'PDF Preview'; ui.pdfViewer.src = '';}
+                     // Worker will send 'Processing...' status message
+                } catch (error) { addMessage(`Upload Error: ${error.message}`, 'system', 'pdf_chat'); setUIState('worker_ready', 'Upload failed.'); currentPDFName = null; ui.pdfTitle.textContent = 'PDF Preview'; ui.pdfViewer.src = '';} // Reset on failure
              }
 
             function handleImageFile(file) {
@@ -1117,7 +1131,7 @@
                 }
              }
 
-            // --- Event Listeners (Setup) ---
+            // --- Event Listeners (Moved inside DOMContentLoaded) ---
             ui.tabChatPDF.addEventListener('click', () => {
                  if (activeTab === 'pdf_chat') return;
                  cleanupStreaming(); activeTab = 'pdf_chat';
@@ -1174,4 +1188,3 @@
     </script>
 </body>
 </html>
-
