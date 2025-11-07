@@ -3,224 +3,695 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Toolkit</title>
-    <!-- Tailwind CSS via CDN -->
+    <title>ChatPDF AI Toolkit</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Marked.js for Markdown rendering (UMD format - global) -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.umd.js"></script>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: 'Inter', sans-serif;
-        }
-        .chat-bubble {
-            max-width: 90%;
-            word-wrap: break-word;
-            white-space: pre-wrap;
-            margin-bottom: 0.5rem;
-        }
-        .user-bubble {
-            background-color: #3b82f6;
-            color: white;
-            border-radius: 1rem 1rem 0.25rem 1rem;
-        }
-        .ai-bubble {
-            background-color: #4b5563;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
             color: #e5e7eb;
-            border-radius: 1rem 1rem 1rem 0.25rem;
         }
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(17, 24, 39, 0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 50;
+        
+        .sidebar {
+            background: linear-gradient(180deg, #1f2937 0%, #0f1419 100%);
+            border-right: 1px solid #374151;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
         }
-        .modal-content {
-            background-color: #1f2937;
-            padding: 2rem;
-            border-radius: 0.75rem;
-            width: 90%;
-            max-width: 400px;
-            color: #d1d5db;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        
+        .chat-item {
+            transition: all 0.2s ease;
+            padding: 0.75rem 1rem;
+            margin: 0.25rem 0;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            border-left: 3px solid transparent;
         }
-        .modal-content input {
+        
+        .chat-item:hover {
             background-color: #374151;
-            border: 1px solid #4b5563;
+            border-left-color: #3b82f6;
+        }
+        
+        .chat-item.active {
+            background-color: #1e40af;
+            border-left-color: #60a5fa;
+            font-weight: 500;
+        }
+        
+        .chat-item.active::before {
+            content: "📌 ";
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #374151;
+            background: #1f2937;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 1rem;
+            text-center;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .tab:hover {
+            background-color: #2d3748;
+        }
+        
+        .tab.active {
+            border-bottom-color: #3b82f6;
+            color: #60a5fa;
+            background-color: #111827;
+        }
+        
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            scroll-behavior: smooth;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .message-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .message-group.user {
+            justify-content: flex-end;
+        }
+        
+        .message-avatar {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+        
+        .message-avatar.user {
+            background: linear-gradient(135deg, #3b82f6, #1e40af);
+        }
+        
+        .message-avatar.ai {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+        }
+        
+        .chat-bubble {
+            max-width: 65%;
+            padding: 1rem;
+            border-radius: 1rem;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .bubble.user {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border-bottom-right-radius: 0.25rem;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+        }
+        
+        .bubble.ai {
+            background: #374151;
             color: #e5e7eb;
-            padding: 0.5rem;
-            border-radius: 0.375rem;
-            width: 100%;
-            margin-top: 0.5rem;
+            border-bottom-left-radius: 0.25rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
-        .modal-content input:focus {
-            outline: none;
-            border-color: #3b82f6;
-        }
+        
         .thinking-bubble {
-            background-color: #6366f1;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
             color: white;
             border-radius: 1rem;
             padding: 1rem;
-            margin-bottom: 1rem;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(99, 102, 241, 0.5);
         }
+        
         .thinking-bubble:hover {
-            background-color: #4f46e5;
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
         }
+        
+        .thinking-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .thinking-toggle {
+            font-size: 0.75rem;
+            opacity: 0.8;
+        }
+        
         .thinking-content {
             display: none;
-            margin-top: 0.5rem;
-            padding-top: 0.5rem;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
             border-top: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 0.9rem;
+            max-height: 300px;
+            overflow-y: auto;
         }
+        
         .thinking-content.visible {
             display: block;
         }
+        
         code {
-            background-color: #374151;
+            background: #1f2937;
             color: #fbbf24;
             padding: 0.25rem 0.5rem;
             border-radius: 0.25rem;
-            font-family: 'Courier New', monospace;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
         }
+        
         pre {
-            background-color: #1f2937;
-            border: 1px solid #4b5563;
-            border-radius: 0.5rem;
+            background: #0f1419;
+            color: #e5e7eb;
+            border: 1px solid #374151;
+            border-radius: 0.75rem;
             padding: 1rem;
             overflow-x: auto;
-            margin: 0.5rem 0;
+            margin: 0.75rem 0;
+            line-height: 1.5;
         }
+        
         pre code {
-            background-color: transparent;
-            color: #e5e7eb;
+            background: transparent;
+            color: inherit;
             padding: 0;
+        }
+        
+        blockquote {
+            border-left: 3px solid #3b82f6;
+            padding-left: 1rem;
+            margin: 0.75rem 0;
+            color: #a1a5b4;
+            font-style: italic;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            margin: 1rem 0 0.5rem 0;
+            color: #f0f4f8;
+            font-weight: 600;
+        }
+        
+        h1 { font-size: 1.875rem; }
+        h2 { font-size: 1.5rem; }
+        h3 { font-size: 1.25rem; }
+        
+        ul, ol {
+            margin: 0.5rem 0;
+            padding-left: 2rem;
+        }
+        
+        li {
+            margin: 0.25rem 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            border: 1px solid #374151;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #374151;
+        }
+        
+        th {
+            background: #1f2937;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        
+        tr:hover {
+            background: #111827;
+        }
+        
+        hr {
+            border: none;
+            border-top: 1px solid #374151;
+            margin: 1rem 0;
+        }
+        
+        .input-area {
+            background: #1f2937;
+            border-top: 1px solid #374151;
+            padding: 1rem;
+            gap: 0.75rem;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+        
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+            background: #374151;
+            border-radius: 0.5rem;
+            transition: background 0.2s;
+        }
+        
+        .toggle-label:hover {
+            background: #4b5563;
+        }
+        
+        .toggle-label input[type="checkbox"] {
+            cursor: pointer;
+            width: 1rem;
+            height: 1rem;
+            accent-color: #3b82f6;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-end;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            background: #374151;
+            border: 1px solid #4b5563;
+            color: #e5e7eb;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            background: #4b5563;
+        }
+        
+        button {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: none;
+            font-size: 1rem;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+        
+        .btn-success:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #1f2937, #111827);
+            padding: 2rem;
+            border-radius: 1rem;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            border: 1px solid #374151;
+        }
+        
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #f0f4f8;
+        }
+        
+        .modal-body {
+            margin-bottom: 1.5rem;
+        }
+        
+        .modal-footer {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 0.5rem;
+            background: #374151;
+            border-radius: 0.25rem;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #06b6d4);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 2s infinite;
+            margin-right: 0.5rem;
+        }
+        
+        .status-indicator.error {
+            background: #ef4444;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid #374151;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #9ca3af;
+        }
+        
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        
+        .typing-indicator {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem;
+        }
+        
+        .typing-dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 50%;
+            background: #9ca3af;
+            animation: bounce 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(1); opacity: 0.5; }
+            40% { transform: scale(1.2); opacity: 1; }
+        }
+        
+        ::-webkit-scrollbar {
+            width: 0.5rem;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 0.25rem;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            
+            .chat-bubble {
+                max-width: 90%;
+            }
+            
+            .input-group {
+                flex-direction: column;
+            }
+            
+            input[type="text"] {
+                width: 100%;
+            }
+            
+            button {
+                width: 100%;
+            }
         }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100">
-    <div class="flex h-screen">
+<body>
+    <div class="flex h-screen bg-gray-900">
         <!-- Sidebar -->
-        <div class="w-64 bg-gray-800 flex flex-col border-r border-gray-700">
+        <div class="sidebar w-64 flex flex-col border-r border-gray-700">
             <div class="p-4 border-b border-gray-700">
-                <h1 class="text-xl font-bold">AI Toolkit</h1>
-                <p id="status" class="text-sm text-gray-400 mt-2">Loading...</p>
-            </div>
-            <div class="flex-1 overflow-y-auto p-4">
-                <div class="mb-4">
-                    <button id="newChatBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition">
-                        + New Chat
-                    </button>
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="status-indicator"></div>
+                    <h1 class="text-xl font-bold">ChatPDF</h1>
                 </div>
-                <div id="chatList" class="space-y-2">
-                    <!-- Chat history will be rendered here -->
+                <p id="status" class="text-xs text-gray-400">Initializing...</p>
+            </div>
+            
+            <div class="p-4 border-b border-gray-700">
+                <button id="newChatBtn" class="w-full btn-primary text-sm">
+                    + New Chat
+                </button>
+            </div>
+            
+            <div id="chatList" class="flex-1 overflow-y-auto p-2">
+                <div class="empty-state py-8">
+                    <div class="empty-state-icon">📋</div>
+                    <p class="text-sm">No chats yet</p>
                 </div>
             </div>
         </div>
-
+        
         <!-- Main Content -->
         <div class="flex-1 flex flex-col">
-            <!-- Tab Navigation -->
-            <div class="bg-gray-800 border-b border-gray-700 flex">
-                <button id="aiChatTab" class="flex-1 px-4 py-3 text-center border-b-2 border-blue-500 bg-gray-700 text-white font-semibold transition">
-                    AI Chat
-                </button>
-                <button id="pdfChatTab" class="flex-1 px-4 py-3 text-center border-b-2 border-gray-700 text-gray-400 hover:text-white transition">
-                    PDF Chat
-                </button>
+            <!-- Tabs -->
+            <div class="tabs">
+                <div id="aiChatTab" class="tab active">
+                    💬 AI Chat
+                </div>
+                <div id="pdfChatTab" class="tab">
+                    📄 PDF Chat
+                </div>
             </div>
-
+            
             <!-- Chat Area -->
-            <div class="flex-1 overflow-y-auto p-6 bg-gray-900">
-                <div id="chatArea" class="space-y-4">
-                    <!-- Messages will be rendered here -->
+            <div class="chat-messages" id="chatMessages">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🤖</div>
+                    <h2>Welcome to ChatPDF AI Toolkit</h2>
+                    <p class="text-sm mt-2">Start a new conversation or upload a PDF to get started</p>
                 </div>
             </div>
-
+            
             <!-- Input Area -->
-            <div class="bg-gray-800 border-t border-gray-700 p-4">
-                <div class="flex gap-2 mb-3">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="webSearchToggle" class="rounded">
-                        <span class="text-sm">Web Search</span>
+            <div class="input-area">
+                <div class="controls">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="webSearchToggle">
+                        <span>🔍 Web Search</span>
                     </label>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="instantAnswerToggle" class="rounded">
-                        <span class="text-sm">Fast Paste</span>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="instantAnswerToggle">
+                        <span>⚡ Fast Paste</span>
                     </label>
                 </div>
-                <div class="flex gap-2">
-                    <input type="text" id="userInput" placeholder="Ask something..." class="flex-1 bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none">
-                    <button id="sendBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition font-semibold">
+                
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="userInput" 
+                        placeholder="Ask a question or upload a PDF..."
+                        autocomplete="off"
+                    >
+                    <button id="sendBtn" class="btn-primary">
                         Send
                     </button>
-                    <button id="uploadPdfBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition font-semibold">
+                    <button id="uploadPdfBtn" class="btn-success">
                         Upload PDF
                     </button>
-                    <input type="file" id="pdfInput" accept=".pdf" style="display: none;">
                 </div>
             </div>
         </div>
     </div>
-
+    
     <!-- Upload Modal -->
-    <div id="uploadModal" class="modal-overlay" style="display: none;">
+    <div id="uploadModal" class="modal">
         <div class="modal-content">
-            <h2 class="text-lg font-bold mb-4">Upload PDF</h2>
-            <input type="file" id="modalPdfInput" accept=".pdf" class="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none">
-            <div class="mt-4 flex gap-2">
-                <button id="confirmUploadBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition">
-                    Upload
-                </button>
-                <button id="cancelUploadBtn" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition">
-                    Cancel
-                </button>
-            </div>
-            <div id="uploadProgress" class="mt-4 hidden">
-                <div class="w-full bg-gray-700 rounded-full h-2">
-                    <div id="uploadProgressBar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+            <div class="modal-header">Upload PDF Document</div>
+            <div class="modal-body">
+                <input 
+                    type="file" 
+                    id="modalPdfInput" 
+                    accept=".pdf"
+                    class="w-full bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                >
+                <div class="progress-bar mt-4 hidden" id="uploadProgress">
+                    <div class="progress-fill" id="uploadProgressBar"></div>
                 </div>
-                <p id="uploadProgressText" class="text-sm mt-2 text-center">0%</p>
+                <p id="uploadProgressText" class="text-xs text-center text-gray-400 mt-2">Ready</p>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelUploadBtn" class="btn-danger text-sm">Cancel</button>
+                <button id="confirmUploadBtn" class="btn-primary text-sm">Upload</button>
             </div>
         </div>
     </div>
-
+    
+    <input type="file" id="pdfInput" accept=".pdf" style="display: none;">
+    
     <script>
-        // ===== CONFIGURATION =====
+        // ========== CONFIGURATION ==========
         const WS_URL = 'wss://chatpdf-server-shtq.onrender.com/ws/web';
         const API_BASE = 'https://chatpdf-server-shtq.onrender.com';
         const FETCH_INTERVAL = 2000;
         const STREAM_UPDATE_INTERVAL = 100;
-        const MAX_RETRIES = 3;
-
-        // ===== STATE =====
+        const AUTO_SCROLL = true;
+        
+        // ========== STATE ==========
         let ws = null;
         let userId = null;
         let currentChatId = null;
         let activeTab = 'ai_chat';
-        let fetchInterval = null;
         let renderInterval = null;
         let webSearchEnabled = false;
         let instantAnswerMode = false;
-
+        let isFirstMessage = true;
+        let messageQueue = [];
+        
         const streamingState = {
-            ai_chat: { ended: false, summary: null, content: '' },
-            ai_thoughts: { ended: false, summary: null, content: '' },
-            pdf_chat: { ended: false, summary: null, content: '' },
-            pdf_thoughts: { ended: false, summary: null, content: '' }
+            ai_chat: { ended: false, bubble: null, content: '' },
+            ai_thoughts: { ended: false, bubble: null, content: '' },
+            pdf_chat: { ended: false, bubble: null, content: '' },
+            pdf_thoughts: { ended: false, bubble: null, content: '' }
         };
-
-        // ===== DOM ELEMENTS =====
+        
+        // ========== DOM ELEMENTS ==========
         const ui = {
             status: document.getElementById('status'),
-            chatArea: document.getElementById('chatArea'),
+            chatMessages: document.getElementById('chatMessages'),
             userInput: document.getElementById('userInput'),
             sendBtn: document.getElementById('sendBtn'),
             uploadPdfBtn: document.getElementById('uploadPdfBtn'),
@@ -239,273 +710,346 @@
             webSearchToggle: document.getElementById('webSearchToggle'),
             instantAnswerToggle: document.getElementById('instantAnswerToggle')
         };
-
-        // ===== HELPER FUNCTIONS =====
+        
+        // ========== UTILITY FUNCTIONS ==========
         function log(msg) {
             console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
         }
-
+        
         function updateStatus(msg) {
             ui.status.textContent = msg;
             log(msg);
         }
-
+        
+        function autoScroll() {
+            if (AUTO_SCROLL) {
+                setTimeout(() => {
+                    ui.chatMessages.scrollTop = ui.chatMessages.scrollHeight;
+                }, 0);
+            }
+        }
+        
+        // ========== MARKDOWN RENDERING ==========
         function renderMarkdown(text) {
             try {
+                if (!window.marked) {
+                    return `<p>${escapeHtml(text)}</p>`;
+                }
                 return marked.parse(text);
             } catch (err) {
-                console.error('Markdown parsing error', err);
-                return `<p>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
+                console.error('Markdown parsing error:', err);
+                return `<p>${escapeHtml(text)}</p>`;
             }
         }
-
-        function renderCharacters(text) {
-            try {
-                const html = renderMarkdown(text);
-                const div = document.createElement('div');
-                div.innerHTML = html;
-                return div;
-            } catch (err) {
-                console.error('Markdown parsing error', err);
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div;
-            }
+        
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
         }
-
+        
         function createChatBubble(text, isUser, isThinking = false) {
             const bubble = document.createElement('div');
-            bubble.className = `chat-bubble ${isUser ? 'user-bubble' : 'ai-bubble'}`;
+            bubble.className = 'chat-bubble';
+            
             if (isThinking) {
                 bubble.className = 'thinking-bubble';
-                bubble.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span>🧠 AI Thinking Process</span>
-                        <span style="font-size: 0.8rem; opacity: 0.7;">Click to expand</span>
-                    </div>
-                    <div class="thinking-content" style="font-size: 0.9rem; opacity: 0.8;"></div>
+                const header = document.createElement('div');
+                header.className = 'thinking-header';
+                header.innerHTML = `
+                    <span>🧠 Thinking Process</span>
+                    <span class="thinking-toggle">Click to expand</span>
                 `;
-                const contentDiv = bubble.querySelector('.thinking-content');
+                
+                const content = document.createElement('div');
+                content.className = 'thinking-content';
+                content.innerHTML = renderMarkdown(text);
+                
+                bubble.appendChild(header);
+                bubble.appendChild(content);
+                
                 bubble.addEventListener('click', () => {
-                    contentDiv.classList.toggle('visible');
+                    content.classList.toggle('visible');
+                    header.querySelector('.thinking-toggle').textContent = 
+                        content.classList.contains('visible') ? 'Click to collapse' : 'Click to expand';
                 });
-                bubble.querySelector('.thinking-content').appendChild(renderCharacters(text));
-                return bubble;
+            } else {
+                bubble.className = `chat-bubble bubble ${isUser ? 'user' : 'ai'}`;
+                bubble.innerHTML = renderMarkdown(text);
             }
-            bubble.appendChild(renderCharacters(text));
+            
             return bubble;
         }
-
-        function removeThinkingBubble() {
-            const bubble = ui.chatArea.querySelector('.thinking-bubble');
-            if (bubble) {
-                bubble.remove();
-                log('Thinking bubble removed');
+        
+        function createMessageGroup(text, isUser, isThinking = false) {
+            const group = document.createElement('div');
+            group.className = `message-group ${isUser ? 'user' : ''}`;
+            
+            if (!isThinking) {
+                const avatar = document.createElement('div');
+                avatar.className = `message-avatar ${isUser ? 'user' : 'ai'}`;
+                avatar.textContent = isUser ? '👤' : '🤖';
+                group.appendChild(avatar);
+            }
+            
+            const bubble = createChatBubble(text, isUser, isThinking);
+            group.appendChild(bubble);
+            
+            return group;
+        }
+        
+        function addEmptyState() {
+            ui.chatMessages.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">💭</div>
+                    <h2>Ready to chat!</h2>
+                    <p class="text-sm mt-2">Ask me anything or upload a PDF to get started</p>
+                </div>
+            `;
+        }
+        
+        function removeEmptyState() {
+            const emptyState = ui.chatMessages.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
             }
         }
-
-        // ===== STREAMING STATE MANAGEMENT =====
+        
+        // ========== STREAMING STATE MANAGEMENT ==========
         function initializeStreamingState(target) {
             if (!streamingState[target]) {
-                streamingState[target] = { ended: false, summary: null, content: '' };
+                streamingState[target] = { ended: false, bubble: null, content: '' };
             }
             streamingState[target].ended = false;
             streamingState[target].content = '';
+            streamingState[target].bubble = null;
         }
-
-        // ===== WEBSOCKET MESSAGE HANDLER =====
+        
+        function clearStreamingState() {
+            Object.keys(streamingState).forEach(key => {
+                streamingState[key].ended = false;
+                streamingState[key].content = '';
+                streamingState[key].bubble = null;
+            });
+        }
+        
+        // ========== WEBSOCKET MESSAGE HANDLER ==========
         function handleServerMessage(message) {
             const { type, user_id, data, target } = message;
             const isThought = target && target.endsWith('thoughts');
             const targetKey = target || activeTab;
-
+            
             switch (type) {
                 case 'auth_success':
-                case 'auth_fail':
-                    log(`Authentication: ${type}`);
-                    if (type === 'auth_success') {
-                        userId = user_id;
-                        updateStatus('Connected! Ready to chat.');
-                        fetchChatHistory();
-                    }
+                    log(`✓ Authentication successful`);
+                    userId = user_id;
+                    updateStatus('Connected! Ready to chat.');
+                    fetchChatHistory();
                     break;
-
+                
+                case 'auth_fail':
+                    log(`✗ Authentication failed`);
+                    updateStatus('Authentication failed. Please refresh.');
+                    break;
+                
                 case 'answer_chunk':
                     if (!streamingState[targetKey]) {
                         initializeStreamingState(targetKey);
                     }
                     streamingState[targetKey].content += data;
+                    messageQueue.push({ targetKey, isThought });
                     break;
-
+                
                 case 'answer_end':
                     if (streamingState[targetKey]) {
                         streamingState[targetKey].ended = true;
-                        if (isThought) {
-                            const bubble = streamingState[targetKey].summary;
-                            if (bubble) {
-                                bubble.textContent = 'View Thinking Process (Finished)';
-                            }
-                        }
-
-                        // CRITICAL FIX: Only clear thinking bubble when BOTH streams are done
-                        console.log(`✓ Stream ended: ${targetKey}`);
-                        console.log('Current state:', Object.entries(streamingState).map(([k, v]) => `${k}: ${v.ended}`).join(', '));
-
+                        
+                        console.log(`[STREAM] Ended: ${targetKey}`);
+                        console.log('[STREAM] State:', Object.entries(streamingState)
+                            .map(([k, v]) => `${k}: ${v.ended}`)
+                            .join(', '));
+                        
                         const mainChatKey = activeTab === 'ai_chat' ? 'ai_chat' : 'pdf_chat';
                         const thoughtsKey = activeTab === 'ai_chat' ? 'ai_thoughts' : 'pdf_thoughts';
-
-                        const mainStreamDone = streamingState[mainChatKey]?.ended;
-                        const thoughtsStreamDone = streamingState[thoughtsKey]?.ended;
-
-                        console.log(`Main (${mainChatKey}): ${mainStreamDone}, Thoughts (${thoughtsKey}): ${thoughtsStreamDone}`);
-
-                        if (mainStreamDone && thoughtsStreamDone) {
-                            console.log('✓✓ Both streams complete! Clearing thinking bubble.');
-                            removeThinkingBubble();
-                        } else {
-                            console.log('⏳ Waiting for other stream...');
+                        
+                        const mainDone = streamingState[mainChatKey]?.ended;
+                        const thoughtsDone = streamingState[thoughtsKey]?.ended;
+                        
+                        console.log(`[STREAM] Main (${mainChatKey}): ${mainDone}, Thoughts (${thoughtsKey}): ${thoughtsDone}`);
+                        
+                        if (mainDone && thoughtsDone) {
+                            console.log(`[STREAM] ✓ All streams complete. Cleaning up.`);
+                            stopRenderInterval();
+                            ui.sendBtn.disabled = false;
                         }
                     }
                     break;
-
+                
                 case 'error':
-                    log(`Error: ${data}`);
+                    log(`✗ Error: ${data}`);
+                    removeEmptyState();
                     const errorDiv = document.createElement('div');
-                    errorDiv.className = 'chat-bubble ai-bubble';
-                    errorDiv.style.color = '#ef4444';
-                    errorDiv.textContent = `⚠️ Error: ${data}`;
-                    ui.chatArea.appendChild(errorDiv);
+                    errorDiv.className = 'message-group';
+                    errorDiv.innerHTML = `
+                        <div class="message-avatar ai">⚠️</div>
+                        <div class="chat-bubble bubble ai" style="color: #fca5a5;">
+                            <strong>Error:</strong> ${escapeHtml(data)}
+                        </div>
+                    `;
+                    ui.chatMessages.appendChild(errorDiv);
+                    autoScroll();
                     break;
-
+                
                 case 'status':
                     updateStatus(data);
                     break;
-
+                
                 default:
-                    log(`Unknown message type: ${type}`);
+                    log(`? Unknown message type: ${type}`);
             }
         }
-
-        // Render streaming content periodically
+        
         function startRenderInterval() {
             if (renderInterval) clearInterval(renderInterval);
             renderInterval = setInterval(() => {
-                Object.entries(streamingState).forEach(([targetKey, state]) => {
-                    if (state.content && !state.summary) {
-                        let bubble;
-                        if (targetKey.endsWith('thoughts')) {
-                            bubble = createChatBubble(state.content, false, true);
-                        } else {
-                            bubble = createChatBubble(state.content, false, false);
+                messageQueue.forEach(({ targetKey, isThought }) => {
+                    const state = streamingState[targetKey];
+                    if (!state.bubble && state.content) {
+                        removeEmptyState();
+                        state.bubble = createMessageGroup(state.content, false, isThought);
+                        ui.chatMessages.appendChild(state.bubble);
+                        autoScroll();
+                    } else if (state.bubble && state.content) {
+                        const contentContainer = state.bubble.querySelector('.thinking-content') || state.bubble.querySelector('.chat-bubble');
+                        if (contentContainer) {
+                            contentContainer.innerHTML = renderMarkdown(state.content);
                         }
-                        state.summary = bubble;
-                        ui.chatArea.appendChild(bubble);
-                        ui.chatArea.scrollTop = ui.chatArea.scrollHeight;
-                    } else if (state.content && state.summary) {
-                        const contentDiv = state.summary.querySelector('.thinking-content') || state.summary;
-                        contentDiv.innerHTML = '';
-                        contentDiv.appendChild(renderCharacters(state.content));
-                        ui.chatArea.scrollTop = ui.chatArea.scrollHeight;
+                        autoScroll();
                     }
                 });
+                messageQueue = [];
             }, STREAM_UPDATE_INTERVAL);
         }
-
+        
         function stopRenderInterval() {
             if (renderInterval) {
                 clearInterval(renderInterval);
                 renderInterval = null;
             }
         }
-
-        // ===== WEBSOCKET CONNECTION =====
+        
+        // ========== WEBSOCKET CONNECTION ==========
         function connectWebSocket() {
-            updateStatus('Connecting...');
-            ws = new WebSocket(WS_URL);
-
-            ws.onopen = () => {
-                log('WebSocket connected. Sending auth...');
-                ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('token') }));
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    console.log('WS Message Received', message);
-                    handleServerMessage(message);
-                } catch (err) {
-                    log(`Error parsing message: ${err}`);
-                }
-            };
-
-            ws.onerror = (err) => {
-                log(`WebSocket error: ${err}`);
-                updateStatus('Connection error. Reconnecting...');
-            };
-
-            ws.onclose = () => {
-                log('WebSocket closed. Reconnecting in 3s...');
-                updateStatus('Disconnected. Reconnecting...');
+            updateStatus('Connecting to server...');
+            try {
+                ws = new WebSocket(WS_URL);
+                
+                ws.onopen = () => {
+                    log('✓ WebSocket connected');
+                    ws.send(JSON.stringify({
+                        type: 'auth',
+                        token: localStorage.getItem('token')
+                    }));
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        handleServerMessage(message);
+                    } catch (err) {
+                        log(`✗ Error parsing message: ${err}`);
+                    }
+                };
+                
+                ws.onerror = (err) => {
+                    log(`✗ WebSocket error: ${err}`);
+                    updateStatus('Connection error. Retrying...');
+                };
+                
+                ws.onclose = () => {
+                    log('✗ WebSocket closed. Reconnecting in 3s...');
+                    updateStatus('Disconnected. Reconnecting...');
+                    setTimeout(connectWebSocket, 3000);
+                };
+            } catch (err) {
+                log(`✗ Failed to create WebSocket: ${err}`);
+                updateStatus('Connection failed. Retrying...');
                 setTimeout(connectWebSocket, 3000);
-            };
+            }
         }
-
-        // ===== CHAT FUNCTIONS =====
+        
+        // ========== CHAT FUNCTIONS ==========
         async function fetchChatHistory() {
             try {
                 const response = await fetch(`${API_BASE}/api/chats`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
                 });
                 const chats = await response.json();
-                console.log('Fetched chats from backend:', chats.length, 'Total in response:', chats.length);
-
+                log(`Fetched ${chats.length} chats`);
+                
                 ui.chatList.innerHTML = '';
+                
+                if (chats.length === 0) {
+                    ui.chatList.innerHTML = `
+                        <div class="empty-state py-8">
+                            <div class="empty-state-icon">📭</div>
+                            <p class="text-xs">No chats yet</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
                 chats.forEach(chat => {
                     if (!chat || !chat.id) return;
                     const chatItem = document.createElement('button');
-                    chatItem.className = `w-full text-left px-3 py-2 rounded hover:bg-gray-700 transition text-sm truncate ${chat.id === currentChatId ? 'bg-blue-600' : ''}`;
+                    chatItem.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
                     chatItem.textContent = chat.title || 'Untitled Chat';
                     chatItem.onclick = () => selectChat(chat.id);
                     ui.chatList.appendChild(chatItem);
                 });
             } catch (err) {
-                log(`Error fetching chats: ${err}`);
+                log(`✗ Error fetching chats: ${err}`);
             }
         }
-
+        
         function selectChat(chatId) {
             currentChatId = chatId;
-            ui.chatArea.innerHTML = '';
-            Object.values(streamingState).forEach(state => state.ended = false);
+            ui.chatMessages.innerHTML = '';
+            clearStreamingState();
             fetchChatHistory();
-            updateStatus('Chat selected. Ready to ask questions.');
+            updateStatus(`Chat selected. Ready to chat.`);
         }
-
+        
         async function sendMessage() {
             const message = ui.userInput.value.trim();
-            if (!message) return;
-
+            if (!message || ui.sendBtn.disabled) return;
+            
             ui.userInput.value = '';
             ui.sendBtn.disabled = true;
-
-            // Add user message to chat
-            const userBubble = createChatBubble(message, true);
-            ui.chatArea.appendChild(userBubble);
-            ui.chatArea.scrollTop = ui.chatArea.scrollHeight;
-
+            
+            // Remove empty state
+            removeEmptyState();
+            
+            // Add user message
+            const userGroup = createMessageGroup(message, true);
+            ui.chatMessages.appendChild(userGroup);
+            autoScroll();
+            
             // Reset streaming state
-            Object.keys(streamingState).forEach(key => {
-                streamingState[key].ended = false;
-                streamingState[key].content = '';
-                streamingState[key].summary = null;
-            });
-
+            clearStreamingState();
+            
             // Show thinking bubble
-            const thinkingBubble = createChatBubble('Thinking...', false, true);
-            ui.chatArea.appendChild(thinkingBubble);
-
+            const thinkingBubble = createMessageGroup('Thinking...', false, true);
+            ui.chatMessages.appendChild(thinkingBubble);
+            autoScroll();
+            
             startRenderInterval();
-
+            
             // Send message
             if (ws && ws.readyState === WebSocket.OPEN) {
                 const payload = {
@@ -519,34 +1063,35 @@
                     }
                 };
                 ws.send(JSON.stringify(payload));
+                log(`Sent message: ${message.substring(0, 50)}...`);
+            } else {
+                updateStatus('Not connected. Please wait...');
+                ui.sendBtn.disabled = false;
             }
-
-            ui.sendBtn.disabled = false;
         }
-
-        // ===== PDF UPLOAD =====
+        
+        // ========== PDF UPLOAD ==========
         function uploadPdf(file) {
             if (!file) {
                 updateStatus('No file selected');
                 return;
             }
-
+            
             const reader = new FileReader();
             reader.onload = (e) => {
                 const b64 = e.target.result.split(',')[1];
                 ui.uploadProgress.classList.remove('hidden');
-
+                ui.uploadProgressText.textContent = 'Uploading...';
+                
                 const chunkSize = 50000;
                 let uploaded = 0;
-
-                // Send upload_start
+                
                 ws.send(JSON.stringify({
                     type: 'upload_start',
                     user_id: userId,
                     filename: file.name
                 }));
-
-                // Send chunks
+                
                 for (let i = 0; i < b64.length; i += chunkSize) {
                     const chunk = b64.slice(i, i + chunkSize);
                     ws.send(JSON.stringify({
@@ -557,87 +1102,105 @@
                     uploaded = Math.min(i + chunkSize, b64.length);
                     const percent = Math.round((uploaded / b64.length) * 100);
                     ui.uploadProgressBar.style.width = percent + '%';
-                    ui.uploadProgressText.textContent = percent + '%';
+                    ui.uploadProgressText.textContent = `${percent}% complete`;
                 }
-
-                // Send upload_end
+                
                 ws.send(JSON.stringify({
                     type: 'upload_end',
                     user_id: userId
                 }));
-
-                ui.uploadProgress.classList.add('hidden');
-                updateStatus('PDF uploaded. Ready to ask questions.');
+                
+                log(`PDF uploaded: ${file.name}`);
+                updateStatus('PDF uploaded successfully. Ready to ask questions!');
+                setTimeout(() => {
+                    ui.uploadProgress.classList.add('hidden');
+                }, 1000);
             };
+            
+            reader.onerror = () => {
+                log(`✗ Error reading file: ${file.name}`);
+                updateStatus('Error reading file');
+            };
+            
             reader.readAsDataURL(file);
         }
-
-        // ===== EVENT LISTENERS =====
+        
+        // ========== EVENT LISTENERS ==========
         ui.sendBtn.addEventListener('click', sendMessage);
+        
         ui.userInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         });
-
+        
         ui.uploadPdfBtn.addEventListener('click', () => {
-            ui.uploadModal.style.display = 'flex';
+            ui.uploadModal.classList.add('active');
         });
-
+        
         ui.confirmUploadBtn.addEventListener('click', () => {
             const file = ui.modalPdfInput.files[0];
             if (file) {
                 uploadPdf(file);
-                ui.uploadModal.style.display = 'none';
+                ui.uploadModal.classList.remove('active');
                 ui.modalPdfInput.value = '';
             }
         });
-
+        
         ui.cancelUploadBtn.addEventListener('click', () => {
-            ui.uploadModal.style.display = 'none';
+            ui.uploadModal.classList.remove('active');
             ui.modalPdfInput.value = '';
         });
-
+        
         ui.newChatBtn.addEventListener('click', () => {
             currentChatId = null;
-            ui.chatArea.innerHTML = '';
-            Object.values(streamingState).forEach(state => state.ended = false);
-            updateStatus('New chat started.');
+            ui.chatMessages.innerHTML = '';
+            clearStreamingState();
+            stopRenderInterval();
+            addEmptyState();
+            updateStatus('New chat started');
+            fetchChatHistory();
         });
-
+        
         ui.aiChatTab.addEventListener('click', () => {
             activeTab = 'ai_chat';
-            ui.aiChatTab.classList.add('border-blue-500', 'bg-gray-700');
-            ui.aiChatTab.classList.remove('border-gray-700', 'text-gray-400');
-            ui.pdfChatTab.classList.remove('border-blue-500', 'bg-gray-700');
-            ui.pdfChatTab.classList.add('border-gray-700', 'text-gray-400');
-            ui.chatArea.innerHTML = '';
+            ui.aiChatTab.classList.add('active');
+            ui.pdfChatTab.classList.remove('active');
+            ui.chatMessages.innerHTML = '';
+            clearStreamingState();
             updateStatus('Switched to AI Chat');
         });
-
+        
         ui.pdfChatTab.addEventListener('click', () => {
             activeTab = 'pdf_chat';
-            ui.pdfChatTab.classList.add('border-blue-500', 'bg-gray-700');
-            ui.pdfChatTab.classList.remove('border-gray-700', 'text-gray-400');
-            ui.aiChatTab.classList.remove('border-blue-500', 'bg-gray-700');
-            ui.aiChatTab.classList.add('border-gray-700', 'text-gray-400');
-            ui.chatArea.innerHTML = '';
+            ui.pdfChatTab.classList.add('active');
+            ui.aiChatTab.classList.remove('active');
+            ui.chatMessages.innerHTML = '';
+            clearStreamingState();
             updateStatus('Switched to PDF Chat');
         });
-
+        
         ui.webSearchToggle.addEventListener('change', (e) => {
             webSearchEnabled = e.target.checked;
             log(`Web search ${webSearchEnabled ? 'enabled' : 'disabled'}`);
         });
-
+        
         ui.instantAnswerToggle.addEventListener('change', (e) => {
             instantAnswerMode = e.target.checked;
             log(`Fast paste mode ${instantAnswerMode ? 'enabled' : 'disabled'}`);
         });
-
-        // ===== INITIALIZATION =====
+        
+        // Close modal when clicking outside
+        ui.uploadModal.addEventListener('click', (e) => {
+            if (e.target === ui.uploadModal) {
+                ui.uploadModal.classList.remove('active');
+            }
+        });
+        
+        // ========== INITIALIZATION ==========
         connectWebSocket();
+        addEmptyState();
     </script>
 </body>
 </html>
