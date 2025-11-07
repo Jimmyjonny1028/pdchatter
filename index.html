@@ -1154,20 +1154,27 @@
                     }
                     break;
 
-                case 'answer_end':
-                    if (streamingState[targetKey]) {
-                        streamingState[targetKey].ended = true;
-                        if (isThought && streamingState[targetKey].summary) {
-                            streamingState[targetKey].summary.textContent = 'View Thinking Process (Finished)';
-                        }
-                    }
-                    
-                    // FIXED: Clear thinking bubble when main chat stream ends
-                    if (!isThought && !targetKey.endsWith('thoughts')) {
-                        console.log('[ANSWER_END] Clearing thinking bubble for', targetKey);
-                        removeThinkingBubble();
-                    }
-                    break;
+                       case 'answer_end':
+    if (streamingState[targetKey]) {
+        streamingState[targetKey].ended = true;
+        if (isThought) {
+            streamingState[targetKey].summary.textContent = 'View Thinking Process (Finished)';
+        }
+        
+        // FIXED: Only clear thinking bubble when BOTH streams are done
+        const mainChatKey = activeTab === 'ai_chat' ? 'ai_chat' : 'pdf_chat';
+        const thoughtsKey = activeTab === 'ai_chat' ? 'ai_thoughts' : 'pdf_thoughts';
+        
+        const mainStreamDone = streamingState[mainChatKey]?.ended;
+        const thoughtsStreamDone = streamingState[thoughtsKey]?.ended;
+        
+        if (mainStreamDone && thoughtsStreamDone) {
+            console.log('Both streams complete. Clearing thinking bubble.');
+            removeThinkingBubble();
+        }
+    }
+    break;
+
 
                 case 'error':
                     console.error('Received error message', message.data);
