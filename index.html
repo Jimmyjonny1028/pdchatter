@@ -653,7 +653,6 @@
         let renderInterval = null;
             const RENDER_SPEED = 10; // Milliseconds between rendering characters
             const CHARS_PER_TICK = 3; // Characters to render each interval
-case 'answer_chunk':
                         if (!isThought && !streamingState[targetKey]?.active) { removeThinkingBubble(); }
                         if (!streamingState[targetKey]?.active) {
                             streamingState[targetKey] = { active: true, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '', isCode: false };
@@ -1319,7 +1318,6 @@ case 'answer_chunk':
         let renderInterval = null;
             const RENDER_SPEED = 10; // Milliseconds between rendering characters
             const CHARS_PER_TICK = 3; // Characters to render each interval
-case 'answer_end':
                          if (streamingState[targetKey]) {
                             streamingState[targetKey].ended = true;
                             if (isThought && streamingState[targetKey].summary) { streamingState[targetKey].summary.textContent = 'View Thinking Process (Finished)'; }
@@ -2707,5 +2705,6 @@ case 'answer_chunk':
          </script>
     </body>
 </html>
+
 
 
