@@ -915,7 +915,7 @@
                     const message = JSON.parse(event.data);
                     console.log('WS Message Received', message);
 
-                    if (message.type === 'authsuccess') {
+                    if (message.type === 'auth_success' || message.type === 'authsuccess') {
                         console.log('Authentication successful!');
                         setUIState('workerready', 'AI worker connected.');
                         if (currentPDFName && activeTab === 'pdfchat') {
@@ -1485,21 +1485,23 @@
             }
         }
 
-        async function loadSavedChats() {
-            const token = localStorage.getItem('aitoolkit:token');
-            ui.sidebarTitle.textContent = activeTab === 'pdfchat' ? 'Saved PDF Chats' : 'Saved AI Chats';
-            ui.savedChatsList.innerHTML = '<p class="text-slate-400 text-sm px-2">Loading...</p>';
+async function loadSavedChats() {
+    const token = localStorage.getItem('aitoolkit:token');
+    ui.sidebarTitle.textContent = activeTab === 'pdfchat' ? 'Saved PDF Chats' : 'Saved AI Chats';
+    ui.savedChatsList.innerHTML = '<p class="text-slate-400 text-sm px-2">Loading...</p>';
 
-            let chats = [];
+    let chats = [];
 
-            try {
-                if (token) {
-                    // FIXED: Better response parsing
-                    const response = await fetchWithAuth(`${RENDERAPIBASEURL}/chats`);
-                    const fetchedChats = Array.isArray(response) ? response : (response.chats || response.data || []);
-                    chats = fetchedChats ? fetchedChats.filter(chat => chat && chat.type === activeTab) : [];
-                    console.log('Fetched chats from backend:', chats.length, 'Total in response:', fetchedChats.length);
-                } else {
+    try {
+        if (token) {
+            const response = await fetchWithAuth(`${RENDERAPIBASEURL}/chats`);
+            const fetchedChats = Array.isArray(response) ? response : (response.chats || response.data || []);
+            // FIX: Don't filter by type - show all chats
+            chats = fetchedChats ? fetchedChats.filter(chat => chat && chat.id) : [];
+            console.log('Fetched chats from backend:', chats.length, 'Total in response:', fetchedChats.length);
+        } else {
+            // guest mode code here...
+
                     try {
                         const guestIdVal = localStorage.getItem('aitoolkit:userid');
                         if (guestIdVal) {
@@ -2047,3 +2049,4 @@
     </script>
 </body>
 </html>
+
