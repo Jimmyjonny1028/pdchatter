@@ -67,7 +67,42 @@
             display: block;
         }
 
-        /* */
+        .thoughts-bubble {
+            background-color: #1f2937;
+            color: #cbd5e1;
+            display: inline-flex;
+            align-items: center;
+            padding: 0.6rem 1rem;
+            border-radius: 1rem 1rem 1rem 0.25rem;
+            align-self: flex-start;
+            margin-right: auto;
+            margin: 0.5rem 0;
+            border-left: 3px solid #6366f1;
+        }
+
+        .thoughts-bubble details summary {
+            list-style: none;
+            padding: 0.25rem 0;
+            cursor: pointer;
+            outline: none;
+            color: #a5b4fc;
+            font-weight: 500;
+        }
+
+        .thoughts-bubble details[open] summary {
+            border-bottom: 1px solid #374151;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.25rem;
+        }
+
+        .thoughts-content pre {
+            background-color: #111827;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            font-size: 0.85em;
+        }
 
         .speed-button {
             background-color: #4f46e5;
@@ -605,10 +640,11 @@
             guestId = 'guest' + Math.random().toString(36).substr(2, 9);
         }
 
-        // // Simplified streamingState, removed 'pdfthoughts' and 'aithoughts'
         let streamingState = {
             pdfchat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
-            aichat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false }
+            aichat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
+            pdfthoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' },
+            aithoughts: { active: false, bubble: null, contentDiv: null, summary: null, ended: false, textBuffer: '', currentText: '' }
         };
 
         let renderInterval = null;
@@ -619,8 +655,22 @@
             const history = target.startsWith('ai') ? aiChatHistory : pdfChatHistory;
             const container = target.startsWith('ai') ? ui.chatContainerAI : ui.chatContainer;
 
-            // // Removed the entire 'if (target.endsWith('thoughts'))' block
-            // as 'thoughts' streams are no longer used.
+            if (target.endsWith('thoughts')) {
+                const bubble = document.createElement('div');
+                bubble.classList.add('thoughts-bubble', 'w-full', 'self-start', 'mr-auto');
+                const details = document.createElement('details');
+                details.classList.add('w-full');
+                const summary = document.createElement('summary');
+                summary.textContent = '...AI is thinking... Click to view';
+                const contentDiv = document.createElement('div');
+                contentDiv.classList.add('thoughts-content', 'pt-2', 'pb-1');
+                details.appendChild(summary);
+                details.appendChild(contentDiv);
+                bubble.appendChild(details);
+                container.appendChild(bubble);
+                container.scrollTop = container.scrollHeight;
+                return { bubble, contentDiv, summary };
+            }
 
             if (sender === 'system') {
                 const bubble = document.createElement('div');
@@ -714,38 +764,36 @@
         function updateAuthUI() {
             const token = localStorage.getItem('aitoolkit:token');
             if (token) {
-                try {
-                    const payload = JSON.parse(atob(token.split('.')[1]));
-                    ui.userStatus.textContent = `Logged in: ${payload.sub}`;
-                    ui.loginButton.style.display = 'none';
-                    ui.logoutButton.style.display = 'block';
-                } catch (e) {
-                    handleLogout();
-                }
+                ui.loginButton.style.display = 'none';
+                ui.logoutButton.style.display = 'block';
+                ui.userStatus.textContent = 'Logged in';
             } else {
-                ui.userStatus.textContent = 'Guest Mode';
                 ui.loginButton.style.display = 'block';
                 ui.logoutButton.style.display = 'none';
+                ui.userStatus.textContent = 'Guest Mode';
             }
+            loadSavedChats();
         }
 
         async function handleAuthSubmit(event) {
             event.preventDefault();
             const username = ui.usernameInput.value.trim();
             const password = ui.passwordInput.value.trim();
-
             if (!username || !password) return;
 
-            const endpoint = isLoginMode ? `${RENDERAPIBASEURL}/login` : `${RENDERAPIBASEURL}/signup`;
             ui.authSubmitButton.disabled = true;
             ui.authSubmitButton.textContent = isLoginMode ? 'Logging in...' : 'Signing up...';
-            ui.authError.textContent = '';
             ui.authError.style.display = 'none';
 
             try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                const url = isLoginMode ? `${RENDERAPIBASEURL}/token` : `${RENDERAPIBASEURL}/users`;
+                const method = isLoginMode ? 'POST' : 'POST';
+
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
                     body: JSON.stringify({ username, password }),
                 });
 
@@ -801,8 +849,8 @@
             try {
                 const response = await fetch(`${RENDERAPIBASEURL}/status`);
                 if (!response.ok) throw new Error('Server not reachable');
-
                 const data = await response.json();
+
                 if (data.worker_connected) {
                     if (!socket || socket.readyState === WebSocket.CLOSED) {
                         setUIState('workerready', 'AI worker connected. Authenticating...');
@@ -833,38 +881,38 @@
                 statusInterval = null;
             }
 
-            const wsUrl = RENDERAPIBASEURL.replace('http', 'ws').replace('https', 'wss') + '/ws/web';
-            console.log('Attempting WebSocket connection to', wsUrl);
-            socket = new WebSocket(wsUrl);
+            const token = localStorage.getItem('aitoolkit:token');
+            const url = token ?
+                `${RENDERAPIBASEURL.replace('http', 'ws')}/ws/client?token=${token}` :
+                `${RENDERAPIBASEURL.replace('http', 'ws')}/ws/client?user_id=${guestId}`;
+
+            socket = new WebSocket(url);
 
             socket.onopen = () => {
-                console.log('WebSocket connected. Sending auth...');
-                const token = localStorage.getItem('aitoolkit:token');
-                socket.send(JSON.stringify(
-                    token
-                        ? { type: 'auth', token: token }
-                        : { type: 'auth', userid: guestId }
-                ));
-
-                if (pingInterval) clearInterval(pingInterval);
+                console.log('WebSocket connected');
+                setUIState('workerready', 'AI worker connected.');
+                // Start pinging to keep connection alive
                 pingInterval = setInterval(() => {
-                    if (socket && socket.readyState === WebSocket.OPEN) {
+                    if (socket.readyState === WebSocket.OPEN) {
                         socket.send(JSON.stringify({ type: 'ping' }));
-                    } else {
-                        clearInterval(pingInterval);
-                        pingInterval = null;
                     }
-                }, 20000);
+                }, 25000);
+
+                // If PDF chat is active and we have a PDF, check if worker needs history reset
+                if (currentPDFName && activeTab === 'pdfchat') {
+                    setUIState('readytochat', `Ready: ${currentPDFName}`);
+                }
+
+                if (localStorage.getItem('aitoolkit:token')) {
+                    setTimeout(() => loadSavedChats(), 100);
+                }
             };
 
             socket.onmessage = (event) => {
                 try {
                     const message = JSON.parse(event.data);
-                    console.log('WS Message Received', message);
-
-                    if (message.type === 'auth_success' || message.type === 'authsuccess') {
-                        console.log('Authentication successful!');
-                        setUIState('workerready', 'AI worker connected.');
+                    if (message.type === 'status' && message.data.includes('Worker is ready')) {
+                        console.log('Received worker ready status');
                         if (currentPDFName && activeTab === 'pdfchat') {
                             setUIState('readytochat', `Ready: ${currentPDFName}`);
                         }
@@ -873,7 +921,6 @@
                         }
                         return;
                     }
-
                     handleServerMessage(message);
                 } catch (error) {
                     console.error('Failed to handle message', error, event.data);
@@ -932,49 +979,44 @@
             ui.uploadLabel.classList.toggle('bg-blue-600', isWorkerReady);
             ui.uploadLabel.classList.toggle('hover:bg-blue-700', isWorkerReady);
 
-            const isPdfStreaming = (streamingState.pdfchat.active) && thinkingBubbleElement && activeTab === 'pdfchat';
-            const isAiStreaming = (streamingState.aichat.active) && thinkingBubbleElement && activeTab === 'aichat';
+            const isPdfStreaming = (streamingState.pdfchat.active || streamingState.pdfthoughts.active) && thinkingBubbleElement && activeTab === 'pdfchat';
+            const isAiStreaming = (streamingState.aichat.active || streamingState.aithoughts.active) && thinkingBubbleElement && activeTab === 'aichat';
 
-            const canUsePdfChat = isChatReady && !isPdfStreaming;
-            ui.messageInput.disabled = !canUsePdfChat;
-            ui.sendButton.disabled = !canUsePdfChat;
-            ui.sendButton.classList.toggle('bg-slate-500', !canUsePdfChat);
-            ui.sendButton.classList.toggle('opacity-50', !canUsePdfChat);
-            ui.sendButton.classList.toggle('bg-indigo-600', canUsePdfChat);
-            ui.sendButton.classList.toggle('hover:bg-indigo-700', canUsePdfChat);
-            ui.messageInput.placeholder = canUsePdfChat
-                ? 'Ask a question about the PDF...'
-                : isPdfStreaming
-                ? 'AI is processing...'
-                : !isConnected
-                ? 'Connecting...'
-                : 'Upload a PDF to begin...';
+            ui.messageInput.disabled = !isChatReady || isPdfStreaming;
+            ui.sendButton.disabled = !isChatReady || isPdfStreaming;
+            ui.sendButton.classList.toggle('bg-blue-600', isChatReady && !isPdfStreaming);
+            ui.sendButton.classList.toggle('hover:bg-blue-700', isChatReady && !isPdfStreaming);
+            ui.sendButton.classList.toggle('bg-slate-500', !isChatReady || isPdfStreaming);
+            ui.sendButton.classList.toggle('opacity-50', !isChatReady || isPdfStreaming);
 
-            const canUseAiChat = isWorkerReady && !isAiStreaming && state !== 'processing';
-            ui.messageInputAI.disabled = !canUseAiChat;
-            ui.sendButtonAI.disabled = !canUseAiChat;
-            ui.sendButtonAI.classList.toggle('bg-slate-500', !canUseAiChat);
-            ui.sendButtonAI.classList.toggle('opacity-50', !canUseAiChat);
-            ui.sendButtonAI.classList.toggle('bg-indigo-600', canUseAiChat);
-            ui.sendButtonAI.classList.toggle('hover:bg-indigo-700', canUseAiChat);
-            ui.messageInputAI.placeholder = canUseAiChat
-                ? 'Send a message, or paste an image...'
-                : isAiStreaming
-                ? 'AI is processing...'
-                : state === 'processing'
-                ? 'Processing PDF...'
-                : 'Connecting...';
+            ui.messageInputAI.disabled = !isConnected || isAiStreaming;
+            ui.sendButtonAI.disabled = !isConnected || isAiStreaming;
+            ui.sendButtonAI.classList.toggle('bg-indigo-600', isConnected && !isAiStreaming);
+            ui.sendButtonAI.classList.toggle('hover:bg-indigo-700', isConnected && !isAiStreaming);
+            ui.sendButtonAI.classList.toggle('bg-slate-500', !isConnected || isAiStreaming);
+            ui.sendButtonAI.classList.toggle('opacity-50', !isConnected || isAiStreaming);
+
+            if (isAiStreaming || isPdfStreaming) {
+                // If streaming, ensure inputs are disabled until finalizeStream is called
+                ui.messageInput.disabled = true;
+                ui.sendButton.disabled = true;
+                ui.messageInputAI.disabled = true;
+                ui.sendButtonAI.disabled = true;
+            }
         }
 
         function showThinkingBubble(tab) {
             removeThinkingBubble();
             const container = tab === 'aichat' ? ui.chatContainerAI : ui.chatContainer;
             thinkingBubbleElement = document.createElement('div');
-            thinkingBubbleElement.classList.add('thinking-bubble');
-            thinkingBubbleElement.innerHTML = '<span>AI is thinking</span><div class="dot-flashing"></div>';
+            thinkingBubbleElement.classList.add('thinking-bubble', 'self-start', 'mr-auto');
+            thinkingBubbleElement.innerHTML = `
+                <span>AI is generating...</span>
+                <div class="dot-flashing"></div>
+            `;
             container.appendChild(thinkingBubbleElement);
             container.scrollTop = container.scrollHeight;
-            setUIState('aithinking', 'AI is processing...');
+            setUIState('aithinking', 'AI is generating...');
         }
 
         function removeThinkingBubble() {
@@ -984,9 +1026,87 @@
             }
         }
 
+        function cleanupStreaming(target = null) {
+            removeThinkingBubble();
+            if (renderInterval) {
+                clearInterval(renderInterval);
+                renderInterval = null;
+            }
+
+            if (target) {
+                const state = streamingState[target];
+                if (state) {
+                    state.active = false;
+                    state.textBuffer = '';
+                    state.ended = true;
+                    // Keep currentText for final render/history
+                }
+                const thoughtState = streamingState[target.replace('chat', 'thoughts')];
+                if (thoughtState) {
+                    thoughtState.active = false;
+                    thoughtState.textBuffer = '';
+                    thoughtState.ended = true;
+                }
+            } else {
+                for (let key in streamingState) {
+                    streamingState[key].active = false;
+                    streamingState[key].textBuffer = '';
+                    streamingState[key].ended = true;
+                }
+            }
+            // The UI state is reset in finalizeStream/handleServerMessage, but ensure we don't think we're streaming.
+        }
+
+        function handleFileReadError(filename) {
+            addMessage(`Error: Could not read file '${filename}'. Please try again or check the file format.`, 'system', 'pdfchat');
+            ui.pdfUploadInput.value = '';
+        }
+
+        function uploadPDF() {
+            const file = ui.pdfUploadInput.files[0];
+            if (!file) return;
+
+            if (file.size > 50 * 1024 * 1024) { // 50MB limit
+                addMessage('Error: File size exceeds 50MB limit.', 'system', 'pdfchat');
+                ui.pdfUploadInput.value = '';
+                return;
+            }
+
+            currentPDFName = file.name;
+            ui.pdfTitle.textContent = `Processing: ${file.name}`;
+            ui.pdfViewer.src = ''; // Clear viewer
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const base64Pdf = event.target.result.split(',')[1];
+                setUIState('processingpdf', `Uploading and processing ${currentPDFName}...`);
+                showThinkingBubble('pdfchat'); // Use thinking bubble for processing status
+
+                try {
+                    socket.send(JSON.stringify({
+                        type: 'upload_pdf',
+                        target: 'pdfchat',
+                        data: {
+                            pdf_b64: base64Pdf,
+                            filename: currentPDFName,
+                        }
+                    }));
+                } catch (e) {
+                    addMessage('Connection error during upload. Please ensure the server is running.', 'system', 'pdfchat');
+                    setUIState('error', 'Connection error.');
+                }
+            };
+            reader.onerror = () => handleFileReadError(file.name);
+            reader.readAsDataURL(file);
+
+            // Immediately display the PDF in the viewer
+            ui.pdfViewer.src = URL.createObjectURL(file);
+            ui.chatContainer.innerHTML = ''; // Clear chat history for the new PDF
+            pdfChatHistory = [];
+        }
+
         function sendMessage(question, tab, imageB64 = null, isRetry = false) {
             const trimmedQuestion = question.trim();
-
             if (!trimmedQuestion && !imageB64) return;
 
             if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -1009,6 +1129,7 @@
                 showThinkingBubble(tab);
             }
 
+            // Prepare history for worker
             const historyForWorker = history.map(msg => ({
                 sender: msg.sender,
                 text: msg.text,
@@ -1042,70 +1163,58 @@
             uploadedImageB64 = null;
         }
 
-        // // Simplified handleServerMessage to remove 'thoughts' logic
         function handleServerMessage(message) {
             const targetKey = message.target || activeTab;
-            // Removed 'isThought' and 'mainTarget' variables
-
+            const isThought = targetKey.endsWith('thoughts');
+            const mainTarget = isThought ? targetKey.replace('thoughts', 'chat') : targetKey;
+            
             switch (message.type) {
                 case 'status':
                     console.log('Received Status', message.data);
                     removeThinkingBubble();
-                    addMessage(message.data, 'system', targetKey); // Use targetKey
-
+                    addMessage(message.data, 'system', mainTarget);
                     if (message.data.includes('Ready for questions') && activeTab === 'pdfchat') {
                         console.log('Setting UI state to readytochat based on status message');
                         setUIState('readytochat', `Ready: ${currentPDFName}`);
-                    } else if (!message.data.includes('Processing') && !message.data.includes('Ready for questions') && activeTab === 'pdfchat') {
-                        if (socket && socket.readyState === WebSocket.OPEN) {
-                            const currentState = ui.status.textContent;
-                            if (!currentState.includes('Ready') && !currentState.includes('worker connected')) {
-                                console.log('Setting UI state to workerready for general status');
-                                setUIState('workerready', 'AI worker connected.');
-                            }
-                        }
                     }
                     break;
+                case 'stream_start':
+                    console.log(`Stream start for: ${targetKey}`);
+                    // Initial setup of streaming state
+                    streamingState[targetKey] = {
+                        active: true,
+                        bubble: null,
+                        contentDiv: null,
+                        ended: false,
+                        textBuffer: '',
+                        currentText: '',
+                        isCode: false,
+                        summary: null,
+                    };
 
-                case 'answer_chunk':
-                    if (!streamingState[targetKey]?.active) {
-                        removeThinkingBubble(); // Removed '!isThought' check
+                    if (isThought) {
+                        const { bubble, contentDiv, summary } = addMessage('', 'ai', targetKey);
+                        Object.assign(streamingState[targetKey], { bubble, contentDiv, summary });
                     }
-
-                    if (!streamingState[targetKey]?.active) {
-                        streamingState[targetKey] = {
-                            active: true,
-                            bubble: null,
-                            contentDiv: null,
-                            summary: null,
-                            ended: false,
-                            textBuffer: '',
-                            currentText: '',
-                            isCode: false,
-                        };
-                        // Removed 'if (isThought)' block
-                        if (!renderInterval) {
-                            renderInterval = setInterval(renderCharacters, RENDERSPEED);
-                        }
+                    // Start rendering interval if not already running
+                    if (!renderInterval) {
+                        renderInterval = setInterval(renderCharacters, fastMode ? 1 : RENDERSPEED);
                     }
-
-                    if (streamingState[targetKey]) {
+                    setUIState('aithinking', 'AI is generating...');
+                    break;
+                case 'stream_chunk':
+                    if (streamingState[targetKey]?.active) {
                         streamingState[targetKey].textBuffer += message.data;
                     }
                     break;
-
-                case 'answer_end':
-                    if (streamingState[targetKey]) {
-                        streamingState[targetKey].ended = true;
-                        // Removed 'if (isThought)' block
-                    }
-                    // Removed 'if (!isThought)' block, logic is now in finalizeStream
+                case 'stream_end':
+                    console.log(`Stream end for: ${targetKey}`);
+                    finalizeStream(targetKey, false);
                     break;
-
                 case 'error':
                     console.error('Received error message', message.data);
-                    finalizeStream(targetKey, true); // Use targetKey
-                    showRetryButton(targetKey, message.data || 'An unknown error occurred.'); // Use targetKey
+                    finalizeStream(mainTarget, true);
+                    showRetryButton(mainTarget, message.data || 'An unknown error occurred.');
                     cleanupStreaming();
 
                     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -1118,17 +1227,14 @@
                         setUIState('error', 'Connection error occurred.');
                     }
                     break;
-
                 case 'pong':
                     break;
-
                 default:
                     console.warn('Unknown message type', message.type, message);
                     removeThinkingBubble();
             }
         }
 
-        // // Simplified renderCharacters logic
         function renderCharacters() {
             const renderSpeed = fastMode ? 999999 : CHARSPERTICK;
             let anyActiveStreams = false;
@@ -1138,16 +1244,15 @@
                 if (!key || !state || !state.active) continue;
 
                 anyActiveStreams = true;
-                // Removed 'isThought', 'mainChatKey', 'thoughtKey'
+                const isThought = key.endsWith('thoughts');
+                const mainChatKey = isThought ? key.replace('thoughts', 'chat') : key;
 
-                if (!state.bubble) { // Simplified bubble creation
-                    const answerElements = addMessage('', 'ai', key);
+                if (!isThought && !state.bubble) {
+                    const answerElements = addMessage('', 'ai', mainChatKey);
                     if (answerElements) Object.assign(state, answerElements);
                 }
 
-                // // Changed condition from 'state.textBuffer.length > 0 && !state.ended'
-                // to 'state.textBuffer.length > 0'
-                if (state.textBuffer.length > 0) {
+                if (state.textBuffer.length > 0 && !state.ended) {
                     const charsToRender = Math.min(state.textBuffer.length, renderSpeed);
                     const chunk = state.textBuffer.substring(0, charsToRender);
                     state.currentText += chunk;
@@ -1161,82 +1266,56 @@
                             state.contentDiv.textContent = state.currentText;
                         }
 
-                        // Removed '!isThought' wrapper
-                        state.contentDiv.querySelectorAll('pre').forEach(pre => {
-                            if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
-                                const codeText = pre.textContent;
-                                if (codeText && codeText.trim().startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
-                                    pre.outerHTML = renderCodeBlock(codeText);
+                        if (!isThought) {
+                            // After marked.parse, we need to find and replace the standard <pre><code> block
+                            // with our custom line-numbered block.
+                            state.contentDiv.querySelectorAll('pre').forEach(pre => {
+                                // Check if it contains <code> and is not already part of a code-block-container
+                                if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
+                                    const codeText = pre.textContent;
+
+                                    // Simple check if it looks like a standard markdown code block
+                                    if (codeText && codeText.trim().startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
+                                        pre.outerHTML = renderCodeBlock(codeText);
+                                    }
                                 }
-                            }
-                        });
-                        addCopyButtonsTo(state.contentDiv);
+                            });
+                        }
                     }
 
-                    const container = key.startsWith('ai') ? ui.chatContainerAI : ui.chatContainer;
-                    if (container && container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
-                        container.scrollTop = container.scrollHeight;
+                    if (state.summary) {
+                        // Update thought summary to show progress
+                        const preview = state.currentText.split('\n')[0].substring(0, 50).trim();
+                        state.summary.textContent = preview ? `...AI is thinking: ${preview}...` : '...AI is thinking... Click to view';
                     }
-                }
 
-                if (state.ended && state.textBuffer.length === 0) {
-                    finalizeStream(key);
+                    const container = mainChatKey === 'pdfchat' ? ui.chatContainer : ui.chatContainerAI;
+                    requestAnimationFrame(() => {
+                        if (container) container.scrollTop = container.scrollHeight;
+                    });
                 }
             }
 
-            if (!anyActiveStreams) {
-                if (renderInterval) {
-                    clearInterval(renderInterval);
-                    renderInterval = null;
-                }
+            if (!anyActiveStreams && renderInterval) {
+                clearInterval(renderInterval);
+                renderInterval = null;
+                setUIState('readytochat', currentPDFName ? `Ready: ${currentPDFName}` : 'AI worker connected.');
             }
         }
 
-        // // Simplified finalizeStream
-        function finalizeStream(target, isError = false) {
-            if (!target || !streamingState[target]) {
-                console.warn('Attempt to finalize invalid stream target');
-                return;
-            }
-
-            removeThinkingBubble(); // Moved from 'if (!isThought)'
-
+        function finalizeStream(target, isError) {
             const state = streamingState[target];
-            if (!state.active) return;
+            if (!state || state.ended) return;
 
-            // Removed 'isThought' variable
+            state.ended = true;
+            state.active = false;
+            // The final render will catch any remaining text in textBuffer and apply markdown
+            renderCharacters();
 
-            if (state.contentDiv && state.textBuffer.length > 0) {
-                state.currentText += state.textBuffer;
-                state.textBuffer = '';
-            }
-            
             const text = state.currentText.trim();
+            const isThought = target.endsWith('thoughts');
 
-            if (state.contentDiv) {
-                try {
-                    state.contentDiv.innerHTML = marked.parse(text);
-                } catch (e) {
-                    console.error('Markdown parsing error in finalizeStream', e, text);
-                    state.contentDiv.textContent = text;
-                }
-
-                // Removed '!isThought' wrapper
-                state.contentDiv.querySelectorAll('pre:not(.line-numbers pre):not(.code-content pre)').forEach(pre => {
-                    if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
-                        const codeText = pre.textContent.replace('Copy', '').trim();
-                        if (codeText && codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
-                            pre.outerHTML = renderCodeBlock(codeText);
-                        }
-                    }
-                });
-
-                addCopyButtonsTo(state.contentDiv);
-            
-            }
-            
-            // Simplified history saving
-            if (!isError && text.length > 0) {
+            if (!isThought && !isError && text.length > 0) {
                 const history = target.startsWith('ai') ? aiChatHistory : pdfChatHistory;
                 const lastMsg = history.length > 0 ? history[history.length - 1] : null;
 
@@ -1244,21 +1323,39 @@
                     history.push({ sender: 'ai', text, imageB64: null });
                     autosaveChat();
                 }
+
+                // Add copy buttons after final content is rendered
+                setTimeout(() => {
+                    if (state.bubble) {
+                        addCopyButtonsTo(state.bubble);
+                    }
+                }, 50);
+
+            } else if (state.summary) {
+                state.summary.textContent = 'View Thinking Process (Finished)';
+
+            } else if (!isThought && !isError && state.currentText.length > 0) {
+                const history = target.startsWith('ai') ? aiChatHistory : pdfChatHistory;
+                const lastMsg = history.length > 0 ? history[history.length - 1] : null;
+
+                if (!lastMsg || lastMsg.sender !== 'ai' || lastMsg.text !== state.currentText) {
+                    history.push({ sender: 'ai', text: state.currentText, imageB64: null });
+                    autosaveChat();
+                }
             }
 
             cleanupStreaming(target);
 
             const mainChatKey = activeTab === 'aichat' ? 'aichat' : 'pdfchat';
-            // Removed 'thoughtKey' and 'thoughtStreamInactive'
+            const thoughtKey = activeTab === 'aichat' ? 'aithoughts' : 'pdfthoughts';
             const mainStreamInactive = !streamingState[mainChatKey] || !streamingState[mainChatKey].active;
+            const thoughtStreamInactive = !streamingState[thoughtKey] || !streamingState[thoughtKey].active;
 
-            if (mainStreamInactive && !isError) { // Simplified condition
-                console.log('Stream finished. Resetting UI state.');
+            if (mainStreamInactive && thoughtStreamInactive && !isError) {
+                console.log('Both streams for activeTab finished. Resetting UI state.');
                 const currentStatusText = ui.status.textContent;
-
                 if (!currentStatusText.includes('Processing')) {
                     console.log('Resetting UI state as no PDF processing is active.');
-
                     if (currentPDFName && activeTab === 'pdfchat') {
                         setUIState('readytochat', `Ready: ${currentPDFName}`);
                     } else {
@@ -1270,50 +1367,7 @@
             } else if (isError) {
                 console.log('Error occurred during stream, UI state handled by error case.');
             } else {
-                console.log('Stream target finished, but other streams for activeTab might still be active. Not resetting UI state yet.');
-            }
-        }
-
-        function cleanupStreaming(target = null) {
-            if (!target) {
-                removeThinkingBubble();
-                Object.keys(streamingState).forEach(key => {
-                    if (streamingState[key]) {
-                        streamingState[key] = {
-                            active: false,
-                            bubble: null,
-                            contentDiv: null,
-                            summary: null,
-                            ended: false,
-                            textBuffer: '',
-                            currentText: '',
-                            isCode: false,
-                        };
-                    }
-                });
-
-                if (renderInterval) {
-                    clearInterval(renderInterval);
-                    renderInterval = null;
-                }
-            } else if (streamingState[target]) {
-                streamingState[target] = {
-                    active: false,
-                    bubble: null,
-                    contentDiv: null,
-                    summary: null,
-                    ended: false,
-                    textBuffer: '',
-                    currentText: '',
-                    isCode: false,
-                };
-
-                let anyActive = Object.values(streamingState).some(ss => ss?.active);
-                if (!anyActive && renderInterval) {
-                    clearInterval(renderInterval);
-                    renderInterval = null;
-                    console.log('All streams inactive, clearing render interval.');
-                }
+                console.log('One stream finished, waiting for the other or worker ready status.');
             }
         }
 
@@ -1329,7 +1383,6 @@
 
             const errorBubbleContainer = document.createElement('div');
             errorBubbleContainer.className = 'error-bubble-container flex justify-start mb-2 px-4 w-full';
-
             const displayError = String(errorMsg).replace(/</g, '&lt;').replace(/>/g, '&gt;');
             errorBubbleContainer.innerHTML = `<div class="chat-bubble bg-red-600 text-white p-3 rounded-lg ai-bubble">ERROR: ${displayError}</div>`;
             targetChatContainer.appendChild(errorBubbleContainer);
@@ -1361,7 +1414,6 @@
         async function autosaveChat() {
             const token = localStorage.getItem('aitoolkit:token');
             const historyToSave = activeTab === 'aichat' ? aiChatHistory : pdfChatHistory;
-
             if (!historyToSave || historyToSave.length === 0) return;
 
             const validHistory = historyToSave.filter(msg => msg && msg.sender && typeof msg.text === 'string');
@@ -1370,75 +1422,72 @@
             const firstUserMessage = validHistory.find(m => m.sender === 'user')?.text || 'New Chat';
             let chatId = activeTab === 'aichat' ? sessionStorage.getItem('currentAIChatId') : sessionStorage.getItem('currentPdfChatId');
 
-            if (!chatId) {
-                chatId = 'chat' + Date.now();
-                if (activeTab === 'aichat') {
-                    sessionStorage.setItem('currentAIChatId', chatId);
-                } else {
-                    sessionStorage.setItem('currentPdfChatId', chatId);
-                }
-            }
-
-            const chatName = activeTab === 'pdfchat' && currentPDFName
-                ? currentPDFName.replace('.pdf', '')
-                : firstUserMessage.substring(0, 30);
-
             const chatData = {
                 id: chatId,
-                name: chatName,
+                name: firstUserMessage.substring(0, 30),
                 type: activeTab,
                 timestamp: new Date().toISOString(),
                 history: validHistory,
-                pdfName: activeTab === 'pdfchat' ? currentPDFName : null,
+                pdfName: activeTab === 'pdfchat' ? currentPDFName : undefined,
             };
 
             if (token) {
                 try {
-                    await fetchWithAuth(`${RENDERAPIBASEURL}/chats`, {
-                        method: 'POST',
+                    const method = chatId ? 'PUT' : 'POST';
+                    const url = chatId ? `${RENDERAPIBASEURL}/chats/${chatId}` : `${RENDERAPIBASEURL}/chats`;
+                    const response = await fetchWithAuth(url, {
+                        method: method,
                         body: JSON.stringify(chatData),
                     });
-                    console.log('Chat saved to backend', chatId);
+
+                    if (response && response.id) {
+                        sessionStorage.setItem(activeTab === 'aichat' ? 'currentAIChatId' : 'currentPdfChatId', response.id);
+                        if (!chatId) { // New chat created
+                            console.log('New chat saved to backend:', response.id);
+                            loadSavedChats();
+                        }
+                    }
                 } catch (error) {
-                    // Error already logged
+                    console.error('Failed to save chat to backend.', error);
                 }
             } else {
-                const storageKey = guestId + ':' + chatId;
+                // Guest mode: use local storage
                 try {
-                    localStorage.setItem(storageKey, JSON.stringify(chatData));
-                    console.log('Guest chat saved locally', storageKey);
+                    if (!chatId) {
+                        chatId = 'chat' + Date.now();
+                        sessionStorage.setItem(activeTab === 'aichat' ? 'currentAIChatId' : 'currentPdfChatId', chatId);
+                        chatData.id = chatId;
+                    }
+                    localStorage.setItem(`${guestId}:chat:${chatId}`, JSON.stringify(chatData));
+                    loadSavedChats();
                 } catch (e) {
-                    console.warn('Could not save guest chat to localStorage', e.message);
+                    console.warn('Failed to save chat to local storage.', e.message);
                 }
             }
         }
 
-async function loadSavedChats() {
-    const token = localStorage.getItem('aitoolkit:token');
-    ui.sidebarTitle.textContent = activeTab === 'pdfchat' ? 'Saved PDF Chats' : 'Saved AI Chats';
-    ui.savedChatsList.innerHTML = '<p class="text-slate-400 text-sm px-2">Loading...</p>';
+        async function loadSavedChats() {
+            const token = localStorage.getItem('aitoolkit:token');
+            let chats = [];
+            ui.savedChatsList.innerHTML = '<p class="text-slate-400 text-sm px-2">Loading chats...</p>';
 
-    let chats = [];
-
-    try {
-        if (token) {
-            const response = await fetchWithAuth(`${RENDERAPIBASEURL}/chats`);
-            const fetchedChats = Array.isArray(response) ? response : (response.chats || response.data || []);
-            // FIX: Don't filter by type - show all chats
-            chats = fetchedChats ? fetchedChats.filter(chat => chat && chat.id) : [];
-            console.log('Fetched chats from backend:', chats.length, 'Total in response:', fetchedChats.length);
-        } else {
-            // guest mode code here...
-
+            try {
+                if (token) {
+                    // Logged-in mode: fetch from backend
+                    const fetchedChats = await fetchWithAuth(`${RENDERAPIBASEURL}/chats?type=${activeTab}`);
+                    chats = fetchedChats ? fetchedChats.filter(chat => chat && chat.id) : [];
+                    console.log('Fetched chats from backend:', chats.length, 'Total in response:', fetchedChats.length);
+                } else {
+                    // Guest mode: load from local storage
                     try {
                         const guestIdVal = localStorage.getItem('aitoolkit:userid');
                         if (guestIdVal) {
                             for (let i = 0; i < localStorage.length; i++) {
                                 const key = localStorage.key(i);
-                                if (key.startsWith(guestIdVal + ':chat')) {
+                                if (key && key.startsWith(guestIdVal + ':chat')) {
                                     try {
                                         const chat = JSON.parse(localStorage.getItem(key));
-                                        if (chat.type === activeTab) {
+                                        if (chat && chat.type === activeTab) {
                                             chats.push(chat);
                                         }
                                     } catch (e) {
@@ -1479,12 +1528,12 @@ async function loadSavedChats() {
                 deleteBtn.className = 'delete-chat-btn flex-shrink-0';
                 deleteBtn.innerHTML = '×';
 
-                const identifier = token ? chat.id : guestId + ':' + chat.id;
+                const identifier = token ? chat.id : guestId + ':chat:' + chat.id;
 
                 item.onclick = () => loadChat(identifier);
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
-                    if (window.confirm(`Delete "${chat.name}"? This cannot be undone.`)) {
+                    if (confirm(`Are you sure you want to delete "${chat.name}"?`)) {
                         deleteChat(identifier);
                     }
                 };
@@ -1497,52 +1546,43 @@ async function loadSavedChats() {
         async function loadChat(identifier) {
             const token = localStorage.getItem('aitoolkit:token');
             let chatData = null;
-            const chatIdToLoad = token ? identifier : identifier.split(':').pop();
-
-            console.log('Loading chat identifier ID', chatIdToLoad);
-
-            cleanupStreaming();
+            const isGuest = !token;
 
             try {
-                if (token) {
-                    chatData = await fetchWithAuth(`${RENDERAPIBASEURL}/chats/${chatIdToLoad}`);
+                if (!isGuest) {
+                    const chatId = identifier;
+                    chatData = await fetchWithAuth(`${RENDERAPIBASEURL}/chats/${chatId}`);
                 } else {
-                    try {
-                        chatData = JSON.parse(localStorage.getItem(identifier));
-                    } catch (e) {
-                        console.warn('Could not load guest chat from localStorage', e.message);
-                        throw new Error('Could not load chat data (localStorage blocked?).');
+                    const storedData = localStorage.getItem(identifier);
+                    if (storedData) {
+                        chatData = JSON.parse(storedData);
                     }
                 }
 
-                if (!chatData) {
-                    throw new Error('Chat data not found.');
+                if (!chatData || !chatData.history) {
+                    throw new Error('Chat data not found or invalid.');
                 }
 
-                if (!chatData.history || !Array.isArray(chatData.history)) {
-                    console.warn('Loaded chat data missing or invalid history array', chatData);
-                    chatData.history = [];
-                }
-
-                activeTab = chatData.type;
                 const currentChatIdKey = activeTab === 'aichat' ? 'currentAIChatId' : 'currentPdfChatId';
-                sessionStorage.setItem(currentChatIdKey, chatData.id);
+                const newChatId = isGuest ? identifier.split(':').pop() : chatData.id;
+                sessionStorage.setItem(currentChatIdKey, newChatId);
 
-                if (activeTab === 'pdfchat') {
+                // Switch view if necessary
+                if (chatData.type === 'pdfchat') {
                     ui.viewChatPDF.style.display = 'grid';
                     ui.viewAIChat.style.display = 'none';
                     ui.tabChatPDF.classList.add('active');
                     ui.tabAIChat.classList.remove('active');
-
+                    activeTab = 'pdfchat';
                     pdfChatHistory = chatData.history;
                     currentPDFName = chatData.pdfName;
                     renderHistory(pdfChatHistory, 'pdfchat');
-                    ui.pdfTitle.textContent = currentPDFName || 'PDF Preview';
+                    ui.pdfTitle.textContent = currentPDFName || 'PDF Preview (File Missing)';
                     ui.pdfViewer.src = '';
 
                     if (!currentPDFName) {
-                        addMessage('Chat loaded. Please re-upload ' + currentPDFName + ' to continue.', 'system', 'pdfchat');
-                        setUIState('workerready', `Loaded ${currentPDFName}. Re-upload needed.`);
+                        addMessage('Chat loaded. Please re-upload the PDF to continue the discussion.', 'system', 'pdfchat');
+                        setUIState('workerready', `Loaded chat: PDF missing.`);
                     } else {
                         setUIState('workerready', 'AI worker connected.');
                     }
@@ -1551,13 +1591,14 @@ async function loadSavedChats() {
                     ui.viewAIChat.style.display = 'flex';
                     ui.tabChatPDF.classList.remove('active');
                     ui.tabAIChat.classList.add('active');
-
+                    activeTab = 'aichat';
                     aiChatHistory = chatData.history;
                     renderHistory(aiChatHistory, 'aichat');
                     setUIState('workerready', 'AI worker connected.');
                 }
 
                 ui.sidebar.classList.add('-translate-x-full');
+
             } catch (error) {
                 console.error('Failed to load chat', error);
                 addMessage(`Error: Could not load chat. ${error.message}`, 'system', activeTab);
@@ -1592,6 +1633,7 @@ async function loadSavedChats() {
                 } else {
                     loadSavedChats();
                 }
+
             } catch (error) {
                 // Error already logged
             }
@@ -1618,74 +1660,62 @@ async function loadSavedChats() {
             ui.imagePreviewContainerAI.style.display = 'none';
             ui.imageUploadAI.value = '';
             uploadedImageB64 = null;
-
+            lastUserMessageText = null;
+            lastUserMessageImageB64 = null;
             ui.errorRetryContainerPdf.style.display = 'none';
             ui.errorRetryContainerAi.style.display = 'none';
 
-            checkWorkerStatus();
-            loadSavedChats();
+            // Ensure the UI state reflects a fresh, ready connection
+            setUIState('workerready', 'AI worker connected.');
         }
 
-        function renderHistory(history, target) {
-            const container = target === 'aichat' ? ui.chatContainerAI : ui.chatContainer;
+        function renderHistory(history, tab) {
+            const container = tab === 'pdfchat' ? ui.chatContainer : ui.chatContainerAI;
             container.innerHTML = '';
 
-            if (!history || history.length === 0) return;
-
             history.forEach(msg => {
-                if (!msg || !msg.sender) return;
+                if (!msg || !msg.text) return;
 
                 const bubble = document.createElement('div');
+                bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
 
-                if (msg.sender === 'system') {
-                    bubble.classList.add('text-center', 'text-xs', 'text-slate-400', 'my-2', 'px-4');
-                    bubble.textContent = msg.text;
+                if (msg.sender === 'user') {
+                    bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
                 } else {
-                    bubble.classList.add('chat-bubble', 'p-3', 'w-fit', 'my-1');
+                    bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
+                }
 
-                    if (msg.sender === 'user') {
-                        bubble.classList.add('user-bubble', 'self-end', 'ml-auto');
-                    } else {
-                        bubble.classList.add('ai-bubble', 'self-start', 'mr-auto');
-                    }
+                const textNode = document.createElement('div');
 
-                    const textNode = document.createElement('div');
+                if (msg.sender === 'ai') {
+                    // Render AI messages with Markdown (including code block numbering)
+                    const finalHtml = marked.parse(msg.text);
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = finalHtml;
 
-                    if (msg.sender === 'ai') {
-                        let finalHtml = '';
-                        try {
-                            finalHtml = marked.parse(msg.text);
-                        } catch (e) {
-                            console.error('Markdown parsing error', e);
-                            finalHtml = msg.text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        }
-
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = finalHtml;
-
-                        tempDiv.querySelectorAll('pre:not(.line-numbers pre):not(.code-content pre)').forEach(pre => {
-                            if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
-                                const codeText = pre.textContent.replace('Copy', '').trim();
-                                if (codeText && codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
-                                    pre.outerHTML = renderCodeBlock(codeText);
-                                }
+                    // Custom processing for code blocks
+                    tempDiv.querySelectorAll('pre:not(.line-numbers pre):not(.code-content pre)').forEach(pre => {
+                        if (pre.querySelector('code') && !pre.closest('.code-block-container')) {
+                            const codeText = pre.textContent.replace('Copy', '').trim();
+                            if (codeText && codeText.startsWith('```') && codeText.includes('\n') && codeText.trim().endsWith('```')) {
+                                pre.outerHTML = renderCodeBlock(codeText);
                             }
-                        });
+                        }
+                    });
 
-                        textNode.innerHTML = tempDiv.innerHTML;
-                        setTimeout(() => addCopyButtonsTo(bubble), 10);
-                    } else {
-                        textNode.textContent = msg.text;
-                    }
+                    textNode.innerHTML = tempDiv.innerHTML;
+                    setTimeout(() => addCopyButtonsTo(bubble), 10);
+                } else {
+                    textNode.textContent = msg.text;
+                }
 
-                    bubble.appendChild(textNode);
+                bubble.appendChild(textNode);
 
-                    if (msg.sender === 'user' && msg.imageB64) {
-                        const img = document.createElement('img');
-                        img.src = 'data:image/jpeg;base64,' + msg.imageB64;
-                        img.className = 'mt-2 rounded max-w-xs';
-                        bubble.appendChild(img);
-                    }
+                if (msg.sender === 'user' && msg.imageB64) {
+                    const img = document.createElement('img');
+                    img.src = 'data:image/jpeg;base64,' + msg.imageB64;
+                    img.className = 'mt-2 rounded max-w-xs';
+                    bubble.appendChild(img);
                 }
 
                 container.appendChild(bubble);
@@ -1697,13 +1727,20 @@ async function loadSavedChats() {
         }
 
         function renderCodeBlock(codeText) {
+            // Extracts the language and the code lines from the markdown block
             const lines = codeText.trim().split('\n');
             const langMatch = lines[0].match(/```(\w+)/);
             const language = langMatch ? langMatch[1] : '';
+            // Remove the start (```lang) and end (```) lines
             const codeLines = langMatch ? lines.slice(1, lines.length - 1) : lines.slice(0);
-
+            
+            // Basic HTML escaping
             const escapeHtml = str => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            
+            // Create the code content (escaped and each line wrapped in <code>)
             const codeHtml = codeLines.map(line => `<code>${escapeHtml(line)}</code>`).join('\n');
+            
+            // Create the line numbers (each number wrapped in <pre> for proper line height alignment)
             const lineNumbers = codeLines.map((_, index) => `<pre>${index + 1}</pre>`).join('\n');
 
             return `
@@ -1720,7 +1757,7 @@ async function loadSavedChats() {
 
         function addCopyButtonsTo(containerElement) {
             containerElement.querySelectorAll('.code-block-container').forEach(blockContainer => {
-                if (blockContainer.querySelector('.copy-button.attached')) return;
+                if (blockContainer.querySelector('.copy-button.attached')) return; // Already attached
 
                 const codeElement = blockContainer.querySelector('.code-content');
                 if (!codeElement) return;
@@ -1729,214 +1766,28 @@ async function loadSavedChats() {
                 if (button) {
                     button.classList.add('attached');
                     button.addEventListener('click', () => {
-                        const code = codeElement.innerText;
+                        // Extract the raw text from all code lines
+                        const code = Array.from(codeElement.querySelectorAll('code')).map(c => c.innerText).join('\n');
+                        
                         const textArea = document.createElement('textarea');
                         textArea.value = code;
                         document.body.appendChild(textArea);
                         textArea.select();
-
+                        
                         try {
                             document.execCommand('copy');
                             button.textContent = 'Copied!';
+                            setTimeout(() => button.textContent = 'Copy', 2000);
                         } catch (err) {
-                            console.error('Fallback: unable to copy', err);
+                            console.error('Could not copy text: ', err);
                             button.textContent = 'Error';
+                            setTimeout(() => button.textContent = 'Copy', 2000);
                         }
-
+                        
                         document.body.removeChild(textArea);
-                        setTimeout(() => {
-                            button.textContent = 'Copy';
-                        }, 2000);
                     });
                 }
             });
-
-            containerElement.querySelectorAll('pre').forEach(block => {
-                if (block.closest('.code-block-container')) return;
-                if (block.querySelector('.copy-button.attached')) return;
-
-                const button = document.createElement('button');
-                button.className = 'copy-button attached';
-                button.textContent = 'Copy';
-
-                block.style.position = 'relative';
-                block.appendChild(button);
-
-                button.addEventListener('click', () => {
-                    const code = block.innerText;
-                    const textArea = document.createElement('textarea');
-                    textArea.value = code;
-                    document.body.appendChild(textArea);
-                    textArea.select();
-
-                    try {
-                        document.execCommand('copy');
-                        button.textContent = 'Copied!';
-                    } catch (err) {
-                        console.error('Fallback: unable to copy', err);
-                        button.textContent = 'Error';
-                    }
-
-                    document.body.removeChild(textArea);
-                    setTimeout(() => {
-                        button.textContent = 'Copy';
-                    }, 2000);
-                });
-            });
-        }
-
-        ui.usernameInput.addEventListener('input', () => {
-            ui.authSubmitButton.disabled = !ui.usernameInput.value.trim() || !ui.passwordInput.value.trim();
-        });
-
-        ui.passwordInput.addEventListener('input', () => {
-            ui.authSubmitButton.disabled = !ui.usernameInput.value.trim() || !ui.passwordInput.value.trim();
-        });
-
-        ui.tabChatPDF.addEventListener('click', () => {
-            if (activeTab === 'pdfchat') return;
-            cleanupStreaming();
-            activeTab = 'pdfchat';
-            ui.viewChatPDF.style.display = 'grid';
-            ui.viewAIChat.style.display = 'none';
-            ui.tabChatPDF.classList.add('active');
-            ui.tabAIChat.classList.remove('active');
-            startNewChat();
-            loadSavedChats();
-        });
-
-        ui.tabAIChat.addEventListener('click', () => {
-            if (activeTab === 'aichat') return;
-            cleanupStreaming();
-            activeTab = 'aichat';
-            ui.viewChatPDF.style.display = 'none';
-            ui.viewAIChat.style.display = 'flex';
-            ui.tabChatPDF.classList.remove('active');
-            ui.tabAIChat.classList.add('active');
-            startNewChat();
-            loadSavedChats();
-        });
-
-        ui.openSidebarButton.addEventListener('click', () => {
-            loadSavedChats();
-            ui.sidebar.classList.remove('-translate-x-full');
-        });
-
-        ui.closeSidebarButton.addEventListener('click', () => {
-            ui.sidebar.classList.add('-translate-x-full');
-        });
-
-        ui.newChatButton.addEventListener('click', () => {
-            startNewChat();
-            ui.sidebar.classList.add('-translate-x-full');
-        });
-
-        ui.pdfUploadInput.addEventListener('change', uploadPDF);
-        ui.imageUploadAI.addEventListener('change', (e) => handleImageFile(e.target.files[0]));
-        ui.removeImageButtonAI.addEventListener('click', () => {
-            uploadedImageB64 = null;
-            ui.imagePreviewContainerAI.style.display = 'none';
-            ui.imageUploadAI.value = '';
-        });
-
-        ui.messageInputAI.addEventListener('paste', (e) => {
-            const items = e.clipboardData || window.clipboardData;
-            for (const item of items.items) {
-                if (item.kind === 'file' && item.type.startsWith('image/')) {
-                    e.preventDefault();
-                    const file = item.getAsFile();
-                    handleImageFile(file);
-                    return;
-                }
-            }
-        });
-
-        ui.sendButton.addEventListener('click', () => sendMessage(ui.messageInput.value, 'pdfchat'));
-        ui.messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage(ui.messageInput.value, 'pdfchat');
-            }
-        });
-
-        ui.sendButtonAI.addEventListener('click', () => sendMessage(ui.messageInputAI.value, 'aichat', uploadedImageB64));
-        ui.messageInputAI.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage(ui.messageInputAI.value, 'aichat', uploadedImageB64);
-            }
-        });
-
-        ui.fastModeButtonPdf.addEventListener('click', () => toggleFastMode(ui.fastModeButtonPdf));
-        ui.fastModeButtonAi.addEventListener('click', () => toggleFastMode(ui.fastModeButtonAi));
-
-        ui.authForm.addEventListener('submit', handleAuthSubmit);
-        ui.logoutButton.addEventListener('click', handleLogout);
-        ui.loginButton.addEventListener('click', () => {
-            isLoginMode = true;
-            ui.authTitle.textContent = 'Login';
-            ui.authSubmitButton.textContent = 'Login';
-            ui.authSwitchButton.textContent = 'Need an account? Sign up';
-            ui.authSubmitButton.disabled = true;
-            showAuthModal(true);
-        });
-
-        ui.authCloseButton.addEventListener('click', () => showAuthModal(false));
-        ui.authSwitchButton.addEventListener('click', () => {
-            isLoginMode = !isLoginMode;
-            ui.authTitle.textContent = isLoginMode ? 'Login' : 'Sign Up';
-            ui.authSubmitButton.textContent = isLoginMode ? 'Login' : 'Sign Up';
-            ui.authSwitchButton.textContent = isLoginMode ? 'Need an account? Sign up' : 'Have an account? Login';
-            ui.authError.style.display = 'none';
-            ui.authForm.reset();
-            ui.authSubmitButton.disabled = true;
-        });
-
-        async function uploadPDF() {
-            const file = ui.pdfUploadInput.files[0];
-            if (!file) return;
-
-            startNewChat();
-            currentPDFName = file.name;
-            ui.pdfTitle.textContent = currentPDFName;
-            ui.pdfViewer.src = URL.createObjectURL(file);
-            setUIState('processing', `Processing ${file.name}...`);
-            addMessage(`Uploading ${file.name}...`, 'system', 'pdfchat');
-
-            let userid;
-            const token = localStorage.getItem('aitoolkit:token');
-            if (token) {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                userid = payload.sub;
-            } else {
-                userid = guestId;
-            }
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch(`${RENDERAPIBASEURL}/upload?userid=${userid}`, {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                if (!response.ok) {
-                    let errorData;
-                    try {
-                        errorData = await response.json();
-                    } catch {
-                        errorData = { detail: response.statusText };
-                    }
-                    throw new Error(errorData.detail || `Failed to start PDF processing. Worker will send Processing... status message`);
-                }
-            } catch (error) {
-                addMessage(`Upload Error: ${error.message}`, 'system', 'pdfchat');
-                setUIState('workerready', 'Upload failed.');
-                currentPDFName = null;
-                ui.pdfTitle.textContent = 'PDF Preview';
-                ui.pdfViewer.src = '';
-            }
         }
 
         function handleImageFile(file) {
@@ -1965,15 +1816,127 @@ async function loadSavedChats() {
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Initial Load ---
             updateAuthUI();
             activeTab = 'pdfchat';
             ui.viewChatPDF.style.display = 'grid';
             ui.viewAIChat.style.display = 'none';
             ui.tabChatPDF.classList.add('active');
             ui.tabAIChat.classList.remove('active');
-
             checkWorkerStatus();
-        });
+
+            // --- Event Listeners ---
+            ui.fastModeButtonPdf.addEventListener('click', (e) => toggleFastMode(e.target));
+            ui.fastModeButtonAi.addEventListener('click', (e) => toggleFastMode(e.target));
+
+            ui.tabChatPDF.addEventListener('click', () => {
+                activeTab = 'pdfchat';
+                ui.viewChatPDF.style.display = 'grid';
+                ui.viewAIChat.style.display = 'none';
+                ui.tabChatPDF.classList.add('active');
+                ui.tabAIChat.classList.remove('active');
+                loadSavedChats();
+            });
+
+            ui.tabAIChat.addEventListener('click', () => {
+                activeTab = 'aichat';
+                ui.viewChatPDF.style.display = 'none';
+                ui.viewAIChat.style.display = 'flex';
+                ui.tabChatPDF.classList.remove('active');
+                ui.tabAIChat.classList.add('active');
+                loadSavedChats();
+            });
+
+            ui.openSidebarButton.addEventListener('click', () => {
+                loadSavedChats();
+                ui.sidebar.classList.remove('-translate-x-full');
+            });
+
+            ui.closeSidebarButton.addEventListener('click', () => {
+                ui.sidebar.classList.add('-translate-x-full');
+            });
+
+            ui.newChatButton.addEventListener('click', () => {
+                startNewChat();
+                ui.sidebar.classList.add('-translate-x-full');
+            });
+
+            ui.pdfUploadInput.addEventListener('change', uploadPDF);
+            ui.imageUploadAI.addEventListener('change', (e) => handleImageFile(e.target.files[0]));
+            ui.removeImageButtonAI.addEventListener('click', () => {
+                uploadedImageB64 = null;
+                ui.imagePreviewContainerAI.style.display = 'none';
+                ui.imageUploadAI.value = '';
+            });
+
+            ui.messageInputAI.addEventListener('paste', (e) => {
+                const items = e.clipboardData || window.clipboardData;
+                for (const item of items.items) {
+                    if (item.kind === 'file' && item.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        handleImageFile(file);
+                        return;
+                    }
+                }
+            });
+
+            ui.sendButton.addEventListener('click', () => sendMessage(ui.messageInput.value, 'pdfchat'));
+            ui.messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !ui.sendButton.disabled) {
+                    e.preventDefault();
+                    sendMessage(ui.messageInput.value, 'pdfchat');
+                }
+            });
+
+            ui.sendButtonAI.addEventListener('click', () => sendMessage(ui.messageInputAI.value, 'aichat', uploadedImageB64));
+            ui.messageInputAI.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !ui.sendButtonAI.disabled) {
+                    e.preventDefault();
+                    sendMessage(ui.messageInputAI.value, 'aichat', uploadedImageB64);
+                }
+            });
+
+            // Authentication listeners
+            ui.authForm.addEventListener('submit', handleAuthSubmit);
+            ui.logoutButton.addEventListener('click', handleLogout);
+
+            ui.loginButton.addEventListener('click', () => {
+                isLoginMode = true;
+                ui.authTitle.textContent = 'Login';
+                ui.authSubmitButton.textContent = 'Login';
+                ui.authSwitchButton.textContent = 'Need an account? Sign up';
+                showAuthModal(true);
+            });
+
+            ui.authCloseButton.addEventListener('click', () => showAuthModal(false));
+            
+            ui.authSwitchButton.addEventListener('click', () => {
+                 isLoginMode = !isLoginMode;
+                 ui.authTitle.textContent = isLoginMode ? 'Login' : 'Sign Up';
+                 ui.authSubmitButton.textContent = isLoginMode ? 'Login' : 'Sign Up';
+                 ui.authSwitchButton.textContent = isLoginMode ? 'Need an account? Sign up' : 'Have an account? Login';
+                 ui.authError.style.display = 'none';
+                 ui.authForm.reset();
+                 ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim());
+            });
+
+            [ui.usernameInput, ui.passwordInput].forEach(input => {
+                input.addEventListener('input', () => {
+                    ui.authSubmitButton.disabled = !(ui.usernameInput.value.trim() && ui.passwordInput.value.trim());
+                });
+            });
+
+            // Initial chat load
+            const initialChatIdKey = activeTab === 'aichat' ? 'currentAIChatId' : 'currentPdfChatId';
+            const initialChatId = sessionStorage.getItem(initialChatIdKey);
+            if (initialChatId) {
+                // If a session ID exists, try to load it (needs server connection first)
+            } else {
+                startNewChat(); // Start a fresh chat if none is in session
+            }
+        }); // End DOMContentLoaded
+
     </script>
 </body>
 </html>
