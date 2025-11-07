@@ -9,7 +9,6 @@
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/+esm"></script>
     <style>
-        /* Base styles */
         body {
             font-family: 'Inter', sans-serif;
         }
@@ -33,7 +32,6 @@
             border-radius: 1rem 1rem 1rem 0.25rem;
         }
 
-        /* MODAL STYLES */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -71,7 +69,6 @@
             display: block;
         }
 
-        /* THOUGHTS BUBBLE */
         .thoughts-bubble {
             background-color: #1f2937;
             color: #cbd5e1;
@@ -109,7 +106,6 @@
             font-size: 0.85em;
         }
 
-        /* SPEED BUTTON */
         .speed-button {
             background-color: #4f46e5;
             color: white;
@@ -132,7 +128,6 @@
             opacity: 1;
         }
 
-        /* CODE BLOCK */
         .code-block-container {
             position: relative;
             background-color: #111827;
@@ -187,7 +182,6 @@
             font-family: 'Fira Code', 'Courier New', Courier, monospace;
         }
 
-        /* RETRY BUTTON */
         .retry-button {
             background-color: #ef4444;
             color: white;
@@ -210,7 +204,6 @@
             padding: 0 1rem 0.5rem 1rem;
         }
 
-        /* Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -231,7 +224,6 @@
             background: #6b7280;
         }
 
-        /* AI Bubble Styling */
         .ai-bubble pre {
             background-color: #111827;
             border: 1px solid #374151;
@@ -254,7 +246,6 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        /* Copy Button */
         .copy-button {
             position: absolute;
             top: 0.5rem;
@@ -281,7 +272,6 @@
             color: #e5e7eb;
         }
 
-        /* Table Styling */
         .ai-bubble table {
             width: 100%;
             margin: 1em 0;
@@ -307,7 +297,6 @@
             background-color: rgba(55, 65, 81, 0.5);
         }
 
-        /* THINKING BUBBLE */
         .thinking-bubble {
             background-color: #4b5563;
             color: #cbd5e1;
@@ -370,7 +359,6 @@
             }
         }
 
-        /* Sidebar */
         .delete-chat-btn {
             margin-left: auto;
             padding: 0 0.5rem;
@@ -393,7 +381,6 @@
             transition: background-color 0.2s;
         }
 
-        /* Web Search Toggle */
         .web-search-toggle {
             display: flex;
             align-items: center;
@@ -419,7 +406,6 @@
     </style>
 </head>
 <body class="bg-slate-900 h-screen overflow-hidden text-slate-200">
-    <!-- Authentication Modal -->
     <div id="auth-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
             <h2 id="auth-title" class="text-2xl font-bold mb-4 text-white">Login</h2>
@@ -473,9 +459,7 @@
         </div>
     </div>
 
-    <!-- Main Flex Container -->
     <div class="flex h-full">
-        <!-- Sidebar -->
         <aside id="chat-sidebar" class="w-64 bg-slate-800 text-slate-100 flex flex-col p-4 transform -translate-x-full fixed h-full z-20 shadow-lg border-r border-slate-700">
             <div class="flex justify-between items-center mb-4 border-b border-slate-600 pb-2">
                 <h2 id="sidebar-title" class="text-xl font-semibold">Saved Chats</h2>
@@ -488,9 +472,7 @@
             <div id="saved-chats-list" class="flex-1 overflow-y-auto space-y-1 pr-1"></div>
         </aside>
 
-        <!-- Main Content Area -->
         <div class="flex-1 flex flex-col h-full bg-slate-900">
-            <!-- Header -->
             <header class="bg-slate-800 shadow-md p-4 flex items-center justify-between z-10 border-b border-slate-700">
                 <div class="flex items-center space-x-4">
                     <button id="open-sidebar-button" class="p-2 rounded-md text-slate-300 hover:bg-slate-700 hover:text-white transition duration-200">
@@ -509,9 +491,7 @@
                 </div>
             </header>
 
-            <!-- ChatPDF View -->
             <div id="view-chatpdf" class="flex-1 grid md:grid-cols-2 gap-4 p-4 overflow-hidden">
-                <!-- PDF Viewer Section -->
                 <section class="bg-slate-700 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-600">
                     <div class="p-2 border-b border-slate-600 bg-slate-800">
                         <h2 id="pdf-title" class="text-lg font-semibold text-slate-200 truncate">PDF Preview</h2>
@@ -521,7 +501,6 @@
                     </div>
                 </section>
 
-                <!-- ChatPDF Chat Section -->
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-700">
                     <main id="chat-container" class="flex-1 p-4 space-y-2 overflow-y-auto"></main>
                     <div id="error-retry-container-pdf" class="bg-slate-800 px-4 pb-2"></div>
@@ -545,12 +524,10 @@
                 </section>
             </div>
 
-            <!-- AI Chat View -->
             <div id="view-ai-chat" style="display: none;" class="flex-1 flex flex-col p-4 overflow-hidden">
                 <section class="bg-slate-800 rounded-lg shadow-md flex flex-col h-full overflow-hidden border border-slate-700">
                     <main id="chat-container-ai" class="flex-1 p-4 space-y-2 overflow-y-auto"></main>
 
-                    <!-- Image Preview Area -->
                     <div id="image-preview-container-ai" class="p-3 border-t border-slate-700 bg-slate-900" style="display: none;">
                         <div class="relative w-20 h-20">
                             <img id="image-preview-ai" class="w-full h-full object-cover rounded-md border border-slate-600">
@@ -560,9 +537,8 @@
 
                     <div id="error-retry-container-ai" class="bg-slate-800 px-4 pb-2"></div>
 
-                    <!-- Footer Input Area -->
                     <footer class="bg-slate-900 p-3 border-t border-slate-700">
-                        <!-- Web Search Toggle -->
+                        <!-- Web Search Toggle - FIXED -->
                         <div class="web-search-toggle">
                             <input type="checkbox" id="webSearchToggle" class="w-5 h-5 cursor-pointer">
                             <label for="webSearchToggle" class="cursor-pointer">
@@ -596,7 +572,6 @@
     <script type="module">
         import { marked } from 'https://cdn.jsdelivr.net/npm/marked@11.1.1/+esm';
 
-        // UI Element References
         const ui = {
             status: document.getElementById('status'),
             sidebar: document.getElementById('chat-sidebar'),
@@ -642,7 +617,6 @@
             webSearchToggle: document.getElementById('webSearchToggle'),
         };
 
-        // State Variables
         let pdfChatHistory = [];
         let aiChatHistory = [];
         let currentPDFName = null;
@@ -658,7 +632,6 @@
 
         const RENDERAPIBASEURL = 'https://chatpdf-server-shtq.onrender.com';
 
-        // Initialize guestId
         try {
             guestId = localStorage.getItem('aitoolkit:userid');
             if (!guestId) {
@@ -670,7 +643,6 @@
             guestId = 'guest' + Math.random().toString(36).substr(2, 9);
         }
 
-        // Streaming state
         let streamingState = {
             pdfchat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
             aichat: { active: false, bubble: null, contentDiv: null, ended: false, textBuffer: '', currentText: '', isCode: false },
@@ -682,7 +654,6 @@
         const RENDERSPEED = 10;
         const CHARSPERTICK = 3;
 
-        // Helper: Add message
         function addMessage(text, sender, target, imageB64 = null) {
             const history = target.startsWith('ai') ? aiChatHistory : pdfChatHistory;
             const container = target.startsWith('ai') ? ui.chatContainerAI : ui.chatContainer;
@@ -745,7 +716,6 @@
             return { bubble, contentDiv: textNode, summary: null };
         }
 
-        // Helper: Authenticated fetch
         async function fetchWithAuth(url, options = {}) {
             const token = localStorage.getItem('aitoolkit:token');
             const headers = {
@@ -783,7 +753,6 @@
             }
         }
 
-        // Auth UI
         function showAuthModal(show) {
             ui.authModal.style.display = show ? 'flex' : 'none';
             if (!show) {
@@ -881,7 +850,6 @@
             startNewChat();
         }
 
-        // WebSocket
         async function checkWorkerStatus() {
             try {
                 const response = await fetch(`${RENDERAPIBASEURL}/status`);
@@ -949,13 +917,12 @@
 
                     if (message.type === 'authsuccess') {
                         console.log('Authentication successful!');
+                        setUIState('workerready', 'AI worker connected.');
                         if (currentPDFName && activeTab === 'pdfchat') {
                             setUIState('readytochat', `Ready: ${currentPDFName}`);
-                        } else {
-                            setUIState('workerready', 'AI worker connected.');
                         }
                         if (localStorage.getItem('aitoolkit:token')) {
-                            loadSavedChats();
+                            setTimeout(() => loadSavedChats(), 100);
                         }
                         return;
                     }
@@ -1003,7 +970,6 @@
             };
         }
 
-        // UI State
         function setUIState(state, message) {
             ui.status.textContent = `Status: ${message}`;
 
@@ -1071,7 +1037,6 @@
             }
         }
 
-        // Message sending
         function sendMessage(question, tab, imageB64 = null, isRetry = false) {
             const trimmedQuestion = question.trim();
 
@@ -1113,16 +1078,14 @@
                 payloadData.image_b64 = imageB64;
             }
 
-            // Add web search toggle
+            // FIXED: Add web search toggle
             const enableWebSearch = ui.webSearchToggle.checked;
+            payloadData.enable_web_search = enableWebSearch;
 
             socket.send(JSON.stringify({
                 type: taskType,
                 target: tab,
-                data: {
-                    ...payloadData,
-                    enable_web_search: enableWebSearch,
-                },
+                data: payloadData,
             }));
 
             ui.messageInput.value = '';
@@ -1132,7 +1095,6 @@
             uploadedImageB64 = null;
         }
 
-        // Server message handler
         function handleServerMessage(message) {
             const targetKey = message.target || activeTab;
             const isThought = targetKey.endsWith('thoughts');
@@ -1197,6 +1159,12 @@
                             streamingState[targetKey].summary.textContent = 'View Thinking Process (Finished)';
                         }
                     }
+                    
+                    // FIXED: Clear thinking bubble when main chat stream ends
+                    if (!isThought && !targetKey.endsWith('thoughts')) {
+                        console.log('[ANSWER_END] Clearing thinking bubble for', targetKey);
+                        removeThinkingBubble();
+                    }
                     break;
 
                 case 'error':
@@ -1225,7 +1193,6 @@
             }
         }
 
-        // Render characters
         function renderCharacters() {
             const renderSpeed = fastMode ? 999999 : CHARSPERTICK;
             let anyActiveStreams = false;
@@ -1289,7 +1256,6 @@
             }
         }
 
-        // Finalize stream
         function finalizeStream(target, isError = false) {
             if (!target || !streamingState[target]) {
                 console.warn('Attempt to finalize invalid stream target');
@@ -1423,7 +1389,6 @@
             }
         }
 
-        // Error and retry
         function showRetryButton(tab, errorMsg) {
             const errorContainer = tab === 'pdfchat' ? ui.errorRetryContainerPdf : ui.errorRetryContainerAi;
             const targetChatContainer = tab === 'pdfchat' ? ui.chatContainer : ui.chatContainerAI;
@@ -1465,7 +1430,6 @@
             sendMessage(lastUserMessageText, tab, lastUserMessageImageB64, true);
         }
 
-        // Chat history
         async function autosaveChat() {
             const token = localStorage.getItem('aitoolkit:token');
             const historyToSave = activeTab === 'aichat' ? aiChatHistory : pdfChatHistory;
@@ -1530,9 +1494,11 @@
 
             try {
                 if (token) {
-                    const fetchedChats = await fetchWithAuth(`${RENDERAPIBASEURL}/chats`);
-                    chats = fetchedChats ? fetchedChats.filter(chat => chat.type === activeTab) : [];
-                    console.log('Fetched chats from backend', chats.length);
+                    // FIXED: Better response parsing
+                    const response = await fetchWithAuth(`${RENDERAPIBASEURL}/chats`);
+                    const fetchedChats = Array.isArray(response) ? response : (response.chats || response.data || []);
+                    chats = fetchedChats ? fetchedChats.filter(chat => chat && chat.type === activeTab) : [];
+                    console.log('Fetched chats from backend:', chats.length, 'Total in response:', fetchedChats.length);
                 } else {
                     try {
                         const guestIdVal = localStorage.getItem('aitoolkit:userid');
@@ -1730,7 +1696,6 @@
             loadSavedChats();
         }
 
-        // Render history
         function renderHistory(history, target) {
             const container = target === 'aichat' ? ui.chatContainerAI : ui.chatContainer;
             container.innerHTML = '';
@@ -1844,7 +1809,7 @@
                             document.execCommand('copy');
                             button.textContent = 'Copied!';
                         } catch (err) {
-                            console.error('Fallback Oops, unable to copy', err);
+                            console.error('Fallback: unable to copy', err);
                             button.textContent = 'Error';
                         }
 
@@ -1878,7 +1843,7 @@
                         document.execCommand('copy');
                         button.textContent = 'Copied!';
                     } catch (err) {
-                        console.error('Fallback Oops, unable to copy', err);
+                        console.error('Fallback: unable to copy', err);
                         button.textContent = 'Error';
                     }
 
@@ -1890,7 +1855,6 @@
             });
         }
 
-        // Event listeners
         ui.usernameInput.addEventListener('input', () => {
             ui.authSubmitButton.disabled = !ui.usernameInput.value.trim() || !ui.passwordInput.value.trim();
         });
@@ -2070,7 +2034,6 @@
             }
         }
 
-        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             updateAuthUI();
             activeTab = 'pdfchat';
