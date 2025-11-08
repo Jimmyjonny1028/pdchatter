@@ -130,7 +130,6 @@ class ConnectionManager:
         data = json.loads(msg)
         user = data.get("user_id")
         
-        # ✅ FIX 5: Add logging to debug message routing
         log(f"📨 Attempting to send to client {user}, type: {data.get('type')}")
         log(f"📋 Connected clients: {list(self.web_clients.keys())}")
         
@@ -201,27 +200,50 @@ async def get_chats(current_user: str = Depends(get_current_user)):
             "type": d.get("type"),
             "pdfName": d.get("pdfName")
         })
+    log(f"📂 Retrieved {len(chats)} chats for {current_user}")
     return chats
 
+# ✅ FIX 5: Improved get_chat endpoint with better Firebase handling
 @app.get("/chats/{cid}")
 async def get_chat(cid: str, current_user: str = Depends(get_current_user)):
-    doc = chats_collection.document(f"{current_user}_{cid}").get()
-    if not doc.exists:
-        raise HTTPException(404, "Chat not found")
-    
-    d = doc.to_dict()
-    if "history" not in d or d["history"] is None:
-        d["history"] = []  # ✅ Ensure history is defined
-    
-    return d
+    try:
+        doc = chats_collection.document(f"{current_user}_{cid}").get()
+        if not doc.exists:
+            log(f"❌ Chat not found: {current_user}_{cid}")
+            raise HTTPException(404, "Chat not found")
+        
+        d = doc.to_dict()
+        
+        # ✅ FIX: Ensure history is ALWAYS an array - handle all cases
+        if "history" not in d:
+            log(f"⚠️ Chat has no history field, creating empty array")
+            d["history"] = []
+        elif d["history"] is None:
+            log(f"⚠️ Chat history is None, converting to empty array")
+            d["history"] = []
+        elif not isinstance(d["history"], list):
+            log(f"⚠️ Chat history is not a list, it's {type(d['history'])}, converting to empty array")
+            d["history"] = []
+        
+        log(f"📖 Returning chat {cid} with {len(d['history'])} messages")
+        return d
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"❌ Error loading chat {cid}: {e}")
+        raise HTTPException(500, f"Error loading chat: {str(e)}")
 
 @app.post("/chats")
 async def save_chat(chat: ChatData, current_user: str = Depends(get_current_user)):
-    d = chat.dict()
-    d["userId"] = current_user
-    chats_collection.document(f"{current_user}_{chat.id}").set(d)
-    log(f"💾 Chat saved for {current_user}")
-    return {"ok": True}
+    try:
+        d = chat.dict()
+        d["userId"] = current_user
+        chats_collection.document(f"{current_user}_{chat.id}").set(d)
+        log(f"💾 Chat saved for {current_user}: {chat.name}")
+        return {"ok": True}
+    except Exception as e:
+        log(f"❌ Error saving chat: {e}")
+        raise HTTPException(500, f"Error saving chat: {str(e)}")
 
 # ---------------- WEBSOCKETS ----------------
 
@@ -256,7 +278,6 @@ async def ws_web(ws: WebSocket):
             except jwt.InvalidTokenError as e:
                 log(f"❌ Invalid token in query: {e}")
         
-        # ✅ FIX 4: Improved authentication with error handling
         if not user:
             # Otherwise, expect JSON auth message
             msg = await ws.receive_text()
@@ -275,7 +296,6 @@ async def ws_web(ws: WebSocket):
         
         await manager.connect_web(ws, user)
         
-        # ✅ FIX: Send auth success with user_id
         await ws.send_text(json.dumps({"type": "auth_success", "user_id": user}))
         log(f"📡 Sent auth_success to user: {user}")
         
