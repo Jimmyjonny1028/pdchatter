@@ -278,8 +278,10 @@
 
         // ============ INITIALIZATION ============
         window.addEventListener("load", () => {
+            console.log("🚀 Page loaded, checking auth...");
             updateAuthUI();
             if (localStorage.getItem("aitoolkittoken")) {
+                console.log("🔑 Token found, connecting WebSocket...");
                 connectWebSocket();
             }
         });
@@ -300,12 +302,14 @@
         function updateAuthUI() {
             const token = localStorage.getItem("aitoolkittoken");
             if (token) {
+                console.log("✅ User authenticated");
                 ui.authModal.classList.add("hidden");
                 ui.mainApp.classList.remove("hidden");
                 ui.authButton.textContent = "Logout";
                 ui.authButton.onclick = handleLogout;
                 loadSavedChats();
             } else {
+                console.log("❌ User not authenticated");
                 ui.authModal.classList.remove("hidden");
                 ui.mainApp.classList.add("hidden");
                 ui.authButton.textContent = "Login";
@@ -379,14 +383,22 @@
                 ? `${RENDER_API_BASE_URL.replace("http", "ws")}ws?token=${token}`
                 : `${RENDER_API_BASE_URL.replace("http", "ws")}ws?guestid=${guestId}`;
 
+            console.log("🔌 Connecting to WebSocket...", wsUrl.substring(0, 50) + "...");
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
-                console.log("WebSocket connected");
+                console.log("✅ WebSocket OPEN - readyState:", socket.readyState);
                 setUIState("workerready", "AI worker connected.");
                 
                 // ✅ FIX 1: Call updateAuthUI after WebSocket connects
                 updateAuthUI();
+                
+                // Log socket state for debugging
+                console.log("📊 Socket state after onopen:", {
+                    readyState: socket.readyState,
+                    url: socket.url,
+                    protocol: socket.protocol
+                });
                 
                 // Start pinging
                 pingInterval = setInterval(() => {
@@ -414,12 +426,12 @@
             };
 
             socket.onerror = (e) => {
-                console.error("WebSocket error:", e);
+                console.error("❌ WebSocket error:", e);
                 setUIState("error", "Connection error");
             };
 
             socket.onclose = () => {
-                console.log("WebSocket closed");
+                console.log("❌ WebSocket closed");
                 clearInterval(pingInterval);
                 setUIState("disconnected", "Disconnected from worker");
                 if (localStorage.getItem("aitoolkittoken")) {
@@ -524,14 +536,32 @@
         function loadChat(chatData) {
             console.log("Loading chat:", chatData);
             cleanupStreaming();
+
+            // ✅ FIX: Validate chatData first
+            if (!chatData || !chatData.type) {
+                console.error("Invalid chat data:", chatData);
+                return;
+            }
+
             const currentChatIdKey = chatData.type === "aichat" ? "currentAIChatId" : "currentPdfChatId";
-            sessionStorage.setItem(currentChatIdKey, chatData.id);
+            if (chatData.id) {
+                sessionStorage.setItem(currentChatIdKey, chatData.id);
+            }
             activeTab = chatData.type;
             ui.errorRetryContainerPdf.style.display = "none";
             ui.errorRetryContainerAi.style.display = "none";
 
-            // ✅ FIX: Ensure history is always an array
-            const history = Array.isArray(chatData.history) ? chatData.history : [];
+            // ✅ FIX: Ensure history is ALWAYS an array - handle null, undefined, and non-arrays
+            let history = [];
+            if (chatData.history) {
+                if (Array.isArray(chatData.history)) {
+                    history = chatData.history;
+                } else if (typeof chatData.history === 'object') {
+                    // If it's an object with messages, try to extract
+                    history = [];
+                }
+            }
+            console.log("Validated history:", history);
 
             if (chatData.type === "pdfchat") {
                 ui.viewChatPDF.style.display = "grid";
@@ -593,10 +623,20 @@
             }
         }
 
+        // ✅ FIX 1: Fix renderHistory to handle undefined/null history
         function renderHistory(history, type) {
             const container = type === "aichat" ? ui.aiChatContainer : ui.pdfChatContainer;
             container.innerHTML = "";
+
+            // ✅ FIX: Check if history is valid before iterating
+            if (!history || !Array.isArray(history)) {
+                console.warn("Invalid history:", history);
+                return;
+            }
+
             for (const msg of history) {
+                if (!msg) continue;
+
                 const div = document.createElement("div");
                 div.className = `chat-bubble ${msg.type === "user" ? "user-bubble" : "ai-bubble"}`;
                 if (msg.imageB64) {
@@ -653,10 +693,16 @@
             }
         }
 
+        // ✅ FIX 3: Fix message sending with proper validation and logging
         async function sendMessage(type) {
             const input = type === "aichat" ? ui.aiChatInput : ui.pdfChatInput;
             const text = input.value.trim();
-            if (!text) return;
+
+            // ✅ FIX: Add validation
+            if (!text) {
+                console.warn("Empty message");
+                return;
+            }
 
             input.value = "";
             addMessage(text, "user", type);
@@ -670,9 +716,27 @@
                 pdf_name: currentPDFName,
             };
 
-            if (socket && socket.readyState === WebSocket.OPEN) {
+            // ✅ FIX: Add detailed logging and better error handling
+            if (!socket) {
+                console.error("❌ WebSocket not initialized!");
+                setUIState("error", "Not connected to worker");
+                return;
+            }
+
+            if (socket.readyState !== WebSocket.OPEN) {
+                console.error("❌ WebSocket not open. State:", socket.readyState);
+                console.error("   0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED");
+                setUIState("error", "Connection not ready. State: " + socket.readyState);
+                return;
+            }
+
+            try {
+                console.log("📤 Sending message:", msg);
                 socket.send(JSON.stringify(msg));
                 setUIState("thinking", "Thinking...");
+            } catch (e) {
+                console.error("❌ Failed to send message:", e);
+                setUIState("error", "Failed to send message");
             }
         }
 
