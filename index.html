@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Toolkit</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/+esm"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
             font-family: Inter, sans-serif;
@@ -55,6 +55,7 @@
             border-radius: 0.3rem;
             margin-bottom: 1rem;
             width: 100%;
+            box-sizing: border-box;
         }
         .modal-content input::placeholder {
             color: #9ca3af;
@@ -383,22 +384,14 @@
                 ? `${RENDER_API_BASE_URL.replace("http", "ws")}ws?token=${token}`
                 : `${RENDER_API_BASE_URL.replace("http", "ws")}ws?guestid=${guestId}`;
 
-            console.log("🔌 Connecting to WebSocket...", wsUrl.substring(0, 50) + "...");
+            console.log("🔌 Connecting to WebSocket...");
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
                 console.log("✅ WebSocket OPEN - readyState:", socket.readyState);
                 setUIState("workerready", "AI worker connected.");
                 
-                // ✅ FIX 1: Call updateAuthUI after WebSocket connects
                 updateAuthUI();
-                
-                // Log socket state for debugging
-                console.log("📊 Socket state after onopen:", {
-                    readyState: socket.readyState,
-                    url: socket.url,
-                    protocol: socket.protocol
-                });
                 
                 // Start pinging
                 pingInterval = setInterval(() => {
@@ -440,10 +433,8 @@
             };
         }
 
-        // ✅ FIX 3: Add debug logging to handleServerMessage
         function handleServerMessage(message) {
-            // Debug logging
-            console.log("📨 Received message:", message.type, "target:", message.target, "data:", message.data?.substring?.(0, 100));
+            console.log("📨 Received message:", message.type, "target:", message.target);
 
             const targetKey = message.target || activeTab;
 
@@ -532,12 +523,10 @@
             ui.sidebar.classList.add("-translate-x-full");
         }
 
-        // ✅ FIX 2: Fix loadChat to handle missing/null history
         function loadChat(chatData) {
             console.log("Loading chat:", chatData);
             cleanupStreaming();
 
-            // ✅ FIX: Validate chatData first
             if (!chatData || !chatData.type) {
                 console.error("Invalid chat data:", chatData);
                 return;
@@ -551,14 +540,10 @@
             ui.errorRetryContainerPdf.style.display = "none";
             ui.errorRetryContainerAi.style.display = "none";
 
-            // ✅ FIX: Ensure history is ALWAYS an array - handle null, undefined, and non-arrays
             let history = [];
             if (chatData.history) {
                 if (Array.isArray(chatData.history)) {
                     history = chatData.history;
-                } else if (typeof chatData.history === 'object') {
-                    // If it's an object with messages, try to extract
-                    history = [];
                 }
             }
             console.log("Validated history:", history);
@@ -573,12 +558,6 @@
                 currentPDFName = chatData.pdfName || null;
                 ui.pdfTitle.textContent = currentPDFName || "PDF Preview";
                 ui.pdfViewer.src = "";
-                if (!currentPDFName) {
-                    addMessage("Chat loaded. Please re-upload the PDF to continue.", "system", "pdfchat");
-                    setUIState("workerready", "Loaded chat. Re-upload PDF needed.");
-                } else {
-                    setUIState("workerready", "AI worker connected.");
-                }
             } else {
                 ui.viewChatPDF.style.display = "none";
                 ui.viewAIChat.style.display = "flex";
@@ -591,44 +570,69 @@
             ui.sidebar.classList.add("-translate-x-full");
         }
 
+        // ✅ FIX 7: Better error handling for loadSavedChats
         async function loadSavedChats() {
             try {
                 const token = localStorage.getItem("aitoolkittoken");
-                if (!token) return;
+                if (!token) {
+                    console.warn("No token, skipping loadSavedChats");
+                    return;
+                }
 
+                console.log("📂 Loading saved chats...");
                 const res = await fetch(RENDER_API_BASE_URL + "chats", {
                     headers: { "Authorization": `Bearer ${token}` },
                 });
 
-                if (!res.ok) throw new Error("Failed to load chats");
+                if (!res.ok) {
+                    console.error("Failed to load chats, status:", res.status);
+                    throw new Error("Failed to load chats");
+                }
 
                 const chats = await res.json();
-                console.log("Loaded chats:", chats);
+                console.log("✅ Loaded chats:", chats);
 
                 ui.chatList.innerHTML = "";
                 for (const chat of chats) {
+                    if (!chat || !chat.id) {
+                        console.warn("Invalid chat:", chat);
+                        continue;
+                    }
+                    
                     const div = document.createElement("div");
                     div.className = "p-2 bg-gray-700 rounded cursor-pointer hover:bg-gray-600";
-                    div.textContent = chat.name;
+                    div.textContent = chat.name || "Unnamed";
                     div.onclick = async () => {
-                        const fullChat = await fetch(RENDER_API_BASE_URL + `chats/${chat.id}`, {
-                            headers: { "Authorization": `Bearer ${token}` },
-                        }).then(r => r.json());
-                        loadChat(fullChat);
+                        console.log("📖 Loading chat:", chat.id);
+                        try {
+                            const fullChatRes = await fetch(RENDER_API_BASE_URL + `chats/${chat.id}`, {
+                                headers: { "Authorization": `Bearer ${token}` },
+                            });
+                            
+                            if (!fullChatRes.ok) {
+                                console.error("Failed to load full chat, status:", fullChatRes.status);
+                                return;
+                            }
+                            
+                            const fullChat = await fullChatRes.json();
+                            console.log("✅ Loaded full chat:", fullChat);
+                            loadChat(fullChat);
+                        } catch (e) {
+                            console.error("Error loading full chat:", e);
+                        }
                     };
                     ui.chatList.appendChild(div);
                 }
             } catch (e) {
-                console.error("Error loading chats:", e);
+                console.error("❌ Error loading chats:", e);
             }
         }
 
-        // ✅ FIX 1: Fix renderHistory to handle undefined/null history
+        // ✅ FIX 1: Better renderHistory with marked error handling
         function renderHistory(history, type) {
             const container = type === "aichat" ? ui.aiChatContainer : ui.pdfChatContainer;
             container.innerHTML = "";
 
-            // ✅ FIX: Check if history is valid before iterating
             if (!history || !Array.isArray(history)) {
                 console.warn("Invalid history:", history);
                 return;
@@ -646,7 +650,14 @@
                     div.appendChild(img);
                 }
                 const text = document.createElement("div");
-                text.innerHTML = marked.parse(msg.text || "");
+                try {
+                    text.innerHTML = typeof marked !== 'undefined' && marked.parse 
+                        ? marked.parse(msg.text || "") 
+                        : (msg.text || "");
+                } catch (e) {
+                    console.error("Marked error in renderHistory:", e);
+                    text.textContent = msg.text || "";
+                }
                 div.appendChild(text);
                 container.appendChild(div);
             }
@@ -663,7 +674,14 @@
             const div = document.createElement("div");
             div.className = `chat-bubble ${type === "user" ? "user-bubble" : "ai-bubble"}`;
             const content = document.createElement("div");
-            content.innerHTML = marked.parse(text || "");
+            try {
+                content.innerHTML = typeof marked !== 'undefined' && marked.parse 
+                    ? marked.parse(text || "") 
+                    : (text || "");
+            } catch (e) {
+                console.error("Marked error:", e);
+                content.textContent = text || "";
+            }
             div.appendChild(content);
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
@@ -671,11 +689,19 @@
             return div;
         }
 
+        // ✅ FIX 4: Better updateLastMessage with marked error handling
         function updateLastMessage(text, targetType) {
             const container = targetType === "aichat" ? ui.aiChatContainer : ui.pdfChatContainer;
             const lastDiv = container.lastElementChild;
             if (lastDiv) {
-                lastDiv.innerHTML = marked.parse(text);
+                try {
+                    lastDiv.innerHTML = typeof marked !== 'undefined' && marked.parse 
+                        ? marked.parse(text) 
+                        : text;
+                } catch (e) {
+                    console.error("Marked error in updateLastMessage:", e);
+                    lastDiv.textContent = text;
+                }
             }
             container.scrollTop = container.scrollHeight;
         }
@@ -693,16 +719,22 @@
             }
         }
 
-        // ✅ FIX 3: Fix message sending with proper validation and logging
+        // ✅ FIX 6: Better debugging for sendMessage
         async function sendMessage(type) {
             const input = type === "aichat" ? ui.aiChatInput : ui.pdfChatInput;
             const text = input.value.trim();
 
-            // ✅ FIX: Add validation
+            console.log("📝 sendMessage called with type:", type);
+            console.log("📝 Input value:", input.value);
+            console.log("📝 Trimmed text:", text);
+            console.log("📝 Text length:", text.length);
+
             if (!text) {
-                console.warn("Empty message");
+                console.warn("⚠️ Empty message - not sending");
                 return;
             }
+
+            console.log("✅ Message validation passed, text:", text);
 
             input.value = "";
             addMessage(text, "user", type);
@@ -716,7 +748,6 @@
                 pdf_name: currentPDFName,
             };
 
-            // ✅ FIX: Add detailed logging and better error handling
             if (!socket) {
                 console.error("❌ WebSocket not initialized!");
                 setUIState("error", "Not connected to worker");
@@ -726,7 +757,7 @@
             if (socket.readyState !== WebSocket.OPEN) {
                 console.error("❌ WebSocket not open. State:", socket.readyState);
                 console.error("   0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED");
-                setUIState("error", "Connection not ready. State: " + socket.readyState);
+                setUIState("error", "Connection not ready");
                 return;
             }
 
