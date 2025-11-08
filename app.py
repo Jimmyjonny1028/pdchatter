@@ -1,15 +1,13 @@
-# File: app.py
-
+# File: app.py - FIXED VERSION
 import asyncio
 import json
 import base64
 import datetime
-import traceback
 import os
 import bcrypt
 import jwt
 from typing import List, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Depends
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
@@ -21,7 +19,8 @@ from firebase_admin import credentials, firestore
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_dev")
 WORKER_SECRET_KEY = os.environ.get("WORKER_SECRET_KEY")
 if not WORKER_SECRET_KEY:
-    print("⚠️ Warning: WORKER_SECRET_KEY not set (dev only).")
+    print("⚠️  Warning: WORKER_SECRET_KEY not set (dev only).")
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 ALGORITHM = "HS256"
 
@@ -30,6 +29,7 @@ try:
     encoded_key = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
     if not encoded_key:
         raise ValueError("FIREBASE_SERVICE_ACCOUNT_BASE64 not set")
+
     decoded_key = base64.b64decode(encoded_key).decode("utf-8")
     cred = credentials.Certificate(json.loads(decoded_key))
     firebase_admin.initialize_app(cred)
@@ -73,7 +73,7 @@ def verify_password(plain, hashed):
 def log(msg): 
     print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
 
-# ---------------- CLASSES ----------------
+# ---------------- MODELS ----------------
 class ChatMessage(BaseModel):
     sender: str
     text: str
@@ -87,9 +87,10 @@ class ChatData(BaseModel):
     history: List[ChatMessage]
     pdfName: Optional[str] = None
 
+# ---------------- CONNECTION MANAGER ----------------
 class ConnectionManager:
     def __init__(self):
-        self.web_clients = {}
+        self.web_clients = {}  # user_id -> websocket
         self.local_worker = None
 
     async def connect_web(self, ws: WebSocket, user: str):
@@ -107,19 +108,25 @@ class ConnectionManager:
     def disconnect_web(self, user: str):
         if user in self.web_clients:
             del self.web_clients[user]
-            log(f"🧑💻 Web client {user} disconnected")
+        log(f"🧑‍💻 Web client {user} disconnected")
 
     async def send_to_worker(self, msg: str):
         if self.local_worker:
-            await self.local_worker.send_text(msg)
+            try:
+                await self.local_worker.send_text(msg)
+            except Exception as e:
+                log(f"Error sending to worker: {e}")
         else:
-            log("⚠️ No worker connected")
+            log("⚠️  No worker connected")
 
     async def send_to_client(self, msg: str):
-        data = json.loads(msg)
-        user = data.get("user_id")
-        if user in self.web_clients:
-            await self.web_clients[user].send_text(msg)
+        try:
+            data = json.loads(msg)
+            user = data.get("user_id")
+            if user and user in self.web_clients:
+                await self.web_clients[user].send_text(msg)
+        except Exception as e:
+            log(f"Error sending to client: {e}")
 
 manager = ConnectionManager()
 app = FastAPI()
@@ -169,9 +176,9 @@ async def get_chats(current_user: str = Depends(get_current_user)):
     for doc in chats_collection.where("userId", "==", current_user).stream():
         d = doc.to_dict()
         chats.append({
-            "id": d.get("id"), 
+            "id": doc.id,  # Use Firestore document ID
             "name": d.get("name"),
-            "timestamp": d.get("timestamp"), 
+            "timestamp": d.get("timestamp"),
             "type": d.get("type"),
             "pdfName": d.get("pdfName")
         })
@@ -179,20 +186,69 @@ async def get_chats(current_user: str = Depends(get_current_user)):
 
 @app.get("/chats/{cid}")
 async def get_chat(cid: str, current_user: str = Depends(get_current_user)):
-    doc = chats_collection.document(f"{current_user}_{cid}").get()
+    doc = chats_collection.document(cid).get()
     if not doc.exists:
         raise HTTPException(404, "Chat not found")
     d = doc.to_dict()
+    
+    # Verify ownership
+    if d.get("userId") != current_user:
+        raise HTTPException(403, "Forbidden")
+    
+    # Ensure history is always a list
     if "history" not in d or d["history"] is None:
-        d["history"] = []  # ✅ ensure history defined
+        d["history"] = []
+    
+    d["id"] = doc.id
     return d
 
 @app.post("/chats")
 async def save_chat(chat: ChatData, current_user: str = Depends(get_current_user)):
     d = chat.dict()
     d["userId"] = current_user
-    chats_collection.document(f"{current_user}_{chat.id}").set(d)
-    log(f"💾 Chat saved for {current_user}")
+    
+    # Create new document with auto-generated ID
+    doc_ref = chats_collection.document()
+    d["id"] = doc_ref.id
+    doc_ref.set(d)
+    
+    log(f"💾 Chat saved for {current_user} with ID {doc_ref.id}")
+    return {"ok": True, "id": doc_ref.id}
+
+@app.put("/chats/{cid}")
+async def update_chat(cid: str, chat: ChatData, current_user: str = Depends(get_current_user)):
+    doc_ref = chats_collection.document(cid)
+    doc = doc_ref.get()
+    
+    if not doc.exists:
+        raise HTTPException(404, "Chat not found")
+    
+    # Verify ownership
+    if doc.to_dict().get("userId") != current_user:
+        raise HTTPException(403, "Forbidden")
+    
+    d = chat.dict()
+    d["userId"] = current_user
+    d["id"] = cid
+    doc_ref.set(d)
+    
+    log(f"💾 Chat updated for {current_user}")
+    return {"ok": True, "id": cid}
+
+@app.delete("/chats/{cid}")
+async def delete_chat(cid: str, current_user: str = Depends(get_current_user)):
+    doc_ref = chats_collection.document(cid)
+    doc = doc_ref.get()
+    
+    if not doc.exists:
+        raise HTTPException(404, "Chat not found")
+    
+    # Verify ownership
+    if doc.to_dict().get("userId") != current_user:
+        raise HTTPException(403, "Forbidden")
+    
+    doc_ref.delete()
+    log(f"🗑️ Chat {cid} deleted for {current_user}")
     return {"ok": True}
 
 # ---------------- WEBSOCKETS ----------------
@@ -205,9 +261,13 @@ async def ws_worker(ws: WebSocket):
             await ws.close(code=1008, reason="Auth failed")
             return
         await manager.connect_worker(ws)
+        
         async for msg in ws.iter_text():
             await manager.send_to_client(msg)
     except WebSocketDisconnect:
+        await manager.disconnect_worker()
+    except Exception as e:
+        log(f"Worker error: {e}")
         await manager.disconnect_worker()
 
 @app.websocket("/ws")
@@ -218,52 +278,47 @@ async def ws_web(ws: WebSocket):
     try:
         # Try token in query first
         token = ws.query_params.get("token")
+        guest_id = ws.query_params.get("guest_id")
+        
         if token:
             try:
                 payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
                 user = payload.get("sub")
-                log(f"✅ Authenticated via query param: {user}")
-            except jwt.InvalidTokenError as e:
-                log(f"❌ Invalid token in query: {e}")
-                token = None
+            except:
+                pass
         
-        # If no valid token in query, expect JSON auth message
-        if not token:
+        if not user and guest_id:
+            user = guest_id
+        
+        if not user:
+            # Expect auth message
             msg = await ws.receive_text()
             d = json.loads(msg)
             if "token" in d:
                 try:
                     payload = jwt.decode(d["token"], JWT_SECRET_KEY, algorithms=[ALGORITHM])
                     user = payload.get("sub")
-                    log(f"✅ Authenticated via message: {user}")
-                except jwt.InvalidTokenError as e:
-                    log(f"❌ Invalid token in message: {e}")
+                except:
+                    pass
         
-        # Fallback to guest if no auth
         if not user:
             user = f"guest_{os.urandom(3).hex()}"
-            log(f"🆕 Guest user created: {user}")
-        
+
         await manager.connect_web(ws, user)
-        
-        # ✅ FIXED: Send auth confirmation with username
-        await ws.send_text(json.dumps({
-            "type": "auth_success", 
-            "user_id": user,
-            "authenticated": not user.startswith("guest_"),
-            "message": f"Connected as {user}"
-        }))
-        
+        await ws.send_text(json.dumps({"type": "auth_success", "user_id": user}))
+
         async for msg in ws.iter_text():
-            data = json.loads(msg)
-            data["user_id"] = user
-            await manager.send_to_worker(json.dumps(data))
-    
+            try:
+                data = json.loads(msg)
+                data["user_id"] = user
+                await manager.send_to_worker(json.dumps(data))
+            except Exception as e:
+                log(f"Error processing message from {user}: {e}")
+                
     except WebSocketDisconnect:
         manager.disconnect_web(user or "unknown")
     except Exception as e:
-        log(f"❌ WebSocket error for {user}: {e}")
-        traceback.print_exc()
+        log(f"Web client error: {e}")
         manager.disconnect_web(user or "unknown")
 
 if __name__ == "__main__":
