@@ -1,3 +1,4 @@
+# app.py — final stable version
 import asyncio
 import json
 import base64
@@ -21,7 +22,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 WORKER_AUTH_TIMEOUT = 10
 
-# === FIREBASE ===
+# === FIREBASE INIT ===
 try:
     encoded_key = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
     decoded_key = base64.b64decode(encoded_key).decode("utf-8")
@@ -32,7 +33,7 @@ try:
     chats = db.collection("chats")
     print("✅ Firebase initialized")
 except Exception as e:
-    print("⚠️ Firebase init failed:", e)
+    print("⚠️ Firebase initialization failed:", e)
 
 # === JWT ===
 def create_access_token(data: dict):
@@ -54,10 +55,10 @@ def hash_pw(p): return bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
 def verify_pw(p, h): return bcrypt.checkpw(p.encode(), h.encode())
 def log(msg): print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-# === FASTAPI ===
+# === FASTAPI APP ===
 app = FastAPI()
 
-# === WS MANAGER ===
+# === MANAGER ===
 class ConnectionManager:
     def __init__(self):
         self.web_clients: Dict[str, WebSocket] = {}
@@ -71,7 +72,8 @@ class ConnectionManager:
             uid = data.get("user_id")
             if uid in self.web_clients:
                 await self.web_clients[uid].send_text(json.dumps({
-                    "type": "error", "data": "AI worker not connected."
+                    "type": "error",
+                    "data": "AI worker not connected or failed authentication."
                 }))
 
 manager = ConnectionManager()
@@ -102,7 +104,6 @@ async def status():
         "clients": list(manager.web_clients.keys())
     }
 
-# --- Signup/Login (both /signup + /auth/signup supported) ---
 @app.post("/signup")
 @app.post("/auth/signup")
 async def signup(user: dict = Body(...)):
@@ -112,66 +113,81 @@ async def signup(user: dict = Body(...)):
     if users.document(u).get().exists:
         raise HTTPException(status_code=400, detail="Username exists.")
     users.document(u).set({"username": u, "password": hash_pw(p)})
+    log(f"User created: {u}")
     return {"message": "User created."}
 
 @app.post("/login")
 @app.post("/auth/login")
-@app.post("/token")  # alias
+@app.post("/token")
 async def login(user: dict = Body(...)):
     u, p = user.get("username"), user.get("password")
     doc = users.document(u).get()
     if not doc.exists or not verify_pw(p, doc.to_dict()["password"]):
         raise HTTPException(status_code=401, detail="Invalid username/password.")
     token = create_access_token({"sub": u})
-    return {"access_token": token, "token_type": "bearer"}
+    log(f"User logged in: {u}")
+    return {"token": token, "access_token": token, "token_type": "bearer"}
 
-# --- Chats ---
 @app.get("/chats")
 async def list_chats(current_user: str = Depends(get_current_user)):
     q = chats.where("userId", "==", current_user).order_by("timestamp", direction=firestore.Query.DESCENDING)
     data = [doc.to_dict() for doc in q.stream()]
+    log(f"Loaded {len(data)} chats for {current_user}")
     return data
 
 @app.post("/chats")
 async def save_chat(chat: ChatData, current_user: str = Depends(get_current_user)):
-    d = chat.dict(); d["userId"] = current_user
+    d = chat.dict()
+    d["userId"] = current_user
     chats.document(f"{current_user}_{chat.id}").set(d)
+    log(f"Chat saved for {current_user}")
     return {"message": "Saved"}
 
-# --- Upload PDF ---
 @app.post("/upload/{user_id}")
 async def upload_pdf(user_id: str, file: UploadFile = File(...)):
     if not manager.worker:
         raise HTTPException(status_code=503, detail="Worker not connected.")
     data = base64.b64encode(await file.read()).decode()
-    await manager.send_to_worker(json.dumps({"type": "upload", "user_id": user_id, "data": data}))
+    await manager.send_to_worker(json.dumps({
+        "type": "upload",
+        "user_id": user_id,
+        "data": data,
+        "filename": file.filename
+    }))
     return {"message": "File sent to worker."}
 
 # === WEBSOCKETS ===
 @app.websocket("/ws")
 @app.websocket("/ws/web")
 async def ws_web(websocket: WebSocket):
+    user = None  # fixed
     await websocket.accept()
     try:
         auth = await asyncio.wait_for(websocket.receive_text(), timeout=15)
         auth = json.loads(auth)
         token = auth.get("token")
-        user = None
+
         if token:
             payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
             user = payload.get("sub")
         if not user:
             user = auth.get("user_id", f"guest_{os.urandom(3).hex()}")
+
         manager.web_clients[user] = websocket
         await websocket.send_text(json.dumps({"type": "auth_success", "user_id": user}))
+        log(f"Web client connected: {user}")
+
         while True:
             msg = json.loads(await websocket.receive_text())
             msg["user_id"] = user
             await manager.send_to_worker(json.dumps(msg))
+
     except Exception as e:
         log(f"ws/web error: {e}")
     finally:
-        manager.web_clients.pop(user, None)
+        if user:
+            manager.web_clients.pop(user, None)
+        log(f"Web client {user} disconnected")
 
 @app.websocket("/ws/worker")
 async def ws_worker(websocket: WebSocket):
@@ -181,7 +197,7 @@ async def ws_worker(websocket: WebSocket):
         auth = json.loads(auth)
         if not WORKER_SECRET_KEY or auth.get("secret") == WORKER_SECRET_KEY:
             manager.worker = websocket
-            log("🤖 Worker authenticated.")
+            log("🤖 Worker authenticated and connected.")
             while True:
                 msg = await websocket.receive_text()
                 data = json.loads(msg)
@@ -194,7 +210,7 @@ async def ws_worker(websocket: WebSocket):
         log(f"ws/worker error: {e}")
     finally:
         manager.worker = None
+        log("Worker disconnected.")
 
-# === MAIN ===
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=10000)
