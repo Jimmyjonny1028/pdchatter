@@ -904,8 +904,19 @@
                     const message = JSON.parse(event.data);
                     
                     // Debug logging
-                    if (message.type !== 'pong') {
-                        console.log('📨 Received message:', message.type, 'target:', message.target, 'data length:', message.data?.length || 0);
+                    if (message.type === 'stream_chunk') {
+                        // Only log every 10th chunk to avoid spam
+                        if (!window.chunkCount) window.chunkCount = 0;
+                        window.chunkCount++;
+                        if (window.chunkCount % 10 === 0) {
+                            console.log('📦 Received chunk #' + window.chunkCount);
+                        }
+                    } else if (message.type !== 'pong') {
+                        console.log('📨 Received message:', message.type, 'target:', message.target, 'data:', message.data?.substring?.(0, 50) || message.data);
+                        if (message.type === 'stream_end') {
+                            console.log('📊 Total chunks received:', window.chunkCount || 0);
+                            window.chunkCount = 0;
+                        }
                     }
                     
                     if (message.type === 'auth_error' && message.data.includes('Invalid or expired token')) {
@@ -1050,6 +1061,10 @@
             const targetKey = message.target || activeTab;
 
             switch (message.type) {
+                case 'auth_success':
+                    console.log('✅ Auth successful, user:', message.user_id);
+                    break;
+
                 case 'status':
                     console.log('Received Status', message.data);
                     removeThinkingBubble();
@@ -1060,12 +1075,14 @@
                     break;
 
                 case 'stream_start':
-                    console.log('Stream Start', targetKey);
+                    console.log('🚀 Stream Start', targetKey);
                     removeThinkingBubble();
                     streamingState[targetKey].active = true;
                     streamingState[targetKey].ended = false;
                     streamingState[targetKey].textBuffer = '';
                     streamingState[targetKey].currentText = '';
+                    streamingState[targetKey].bubble = null;
+                    streamingState[targetKey].contentDiv = null;
                     streamingState[targetKey].isCode = message.data?.is_code || false;
                     if (!renderInterval) {
                         renderInterval = setInterval(renderCharacters, RENDERSPEED);
@@ -1080,7 +1097,7 @@
                     break;
 
                 case 'stream_end':
-                    console.log('Stream End', targetKey);
+                    console.log('🏁 Stream End', targetKey, 'Buffer length:', streamingState[targetKey]?.textBuffer.length, 'Current text length:', streamingState[targetKey]?.currentText.length);
                     if (streamingState[targetKey]) {
                         streamingState[targetKey].ended = true;
                         // Force immediate finalization if buffer is empty
