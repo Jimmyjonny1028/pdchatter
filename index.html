@@ -902,6 +902,12 @@
             socket.onmessage = (event) => {
                 try {
                     const message = JSON.parse(event.data);
+                    
+                    // Debug logging
+                    if (message.type !== 'pong') {
+                        console.log('📨 Received message:', message.type, 'target:', message.target, 'data length:', message.data?.length || 0);
+                    }
+                    
                     if (message.type === 'auth_error' && message.data.includes('Invalid or expired token')) {
                         handleLogout();
                         showAuthModal(true);
@@ -1058,6 +1064,8 @@
                     removeThinkingBubble();
                     streamingState[targetKey].active = true;
                     streamingState[targetKey].ended = false;
+                    streamingState[targetKey].textBuffer = '';
+                    streamingState[targetKey].currentText = '';
                     streamingState[targetKey].isCode = message.data?.is_code || false;
                     if (!renderInterval) {
                         renderInterval = setInterval(renderCharacters, RENDERSPEED);
@@ -1075,6 +1083,10 @@
                     console.log('Stream End', targetKey);
                     if (streamingState[targetKey]) {
                         streamingState[targetKey].ended = true;
+                        // Force immediate finalization if buffer is empty
+                        if (streamingState[targetKey].textBuffer.length === 0) {
+                            setTimeout(() => finalizeStream(targetKey), 100);
+                        }
                     }
                     break;
 
@@ -1118,7 +1130,7 @@
                     if (answerElements) Object.assign(state, answerElements);
                 }
 
-                if (state.textBuffer.length > 0 && !state.ended) {
+                if (state.textBuffer.length > 0) {
                     const charsToRender = Math.min(state.textBuffer.length, renderSpeed);
                     const chunk = state.textBuffer.substring(0, charsToRender);
                     state.currentText += chunk;
@@ -1147,21 +1159,29 @@
                     }
                 }
 
+                // Check if stream is ended AND buffer is empty
                 if (state.ended && state.textBuffer.length === 0) {
+                    console.log(`Finalizing stream for ${key}`);
                     finalizeStream(key);
+                    anyActiveStreams = false; // Force stop since we're finalizing
                 }
             }
 
             if (!anyActiveStreams && renderInterval) {
                 clearInterval(renderInterval);
                 renderInterval = null;
-                console.log('Render interval stopped.');
+                console.log('Render interval stopped - no active streams.');
             }
         }
 
         function finalizeStream(target, isError = false) {
             const state = streamingState[target];
-            if (!state || !state.active) return;
+            if (!state || !state.active) {
+                console.log(`Finalize called but stream not active for ${target}`);
+                return;
+            }
+            
+            console.log(`Finalizing stream for ${target}, text length: ${state.currentText.length}, isError: ${isError}`);
             state.active = false;
 
             const text = state.currentText;
@@ -1201,6 +1221,7 @@
             const mainStreamInactive = !streamingState[mainChatKey] || !streamingState[mainChatKey].active;
 
             if (mainStreamInactive && !isError) {
+                console.log(`Resetting UI state after finalize for ${target}`);
                 const currentStatusText = ui.status.textContent;
                 if (!currentStatusText.includes('Processing')) {
                     if (currentPDFName && activeTab === 'pdfchat') {
