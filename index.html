@@ -1401,7 +1401,7 @@
                 if (token) {
                     const fetchedChats = await fetchWithAuth(`${RENDERAPIBASEURL}/chats`);
                     chats = fetchedChats ? fetchedChats.filter(chat => chat && chat.id && chat.type === activeTab) : [];
-                    console.log('Fetched chats from backend:', chats.length);
+                    console.log('Fetched chats from backend:', chats.length, 'for type:', activeTab);
                 } else {
                     try {
                         const guestIdVal = localStorage.getItem('aitoolkit:userid');
@@ -1455,9 +1455,22 @@
                 item.dataset.id = chat.id;
                 item.dataset.chatType = chat.type;
 
-                item.addEventListener('click', (e) => {
+                item.addEventListener('click', async (e) => {
                     if (e.target === deleteBtn) return;
-                    loadChat(chat);
+                    
+                    // Fetch full chat data if from server
+                    if (token) {
+                        try {
+                            const fullChat = await fetchWithAuth(`${RENDERAPIBASEURL}/chats/${chat.id}`);
+                            console.log('Loaded full chat:', fullChat.id, 'with', fullChat.history?.length || 0, 'messages');
+                            loadChat(fullChat);
+                        } catch (error) {
+                            console.error('Error loading full chat:', error);
+                            addMessage('Error loading chat.', 'system', activeTab);
+                        }
+                    } else {
+                        loadChat(chat);
+                    }
                 });
 
                 deleteBtn.addEventListener('click', (e) => {
@@ -1484,6 +1497,8 @@
         }
 
         function loadChat(chatData) {
+            console.log('📂 Loading chat:', chatData.id, 'Type:', chatData.type, 'History length:', chatData.history?.length);
+            
             cleanupStreaming();
             
             const currentChatIdKey = chatData.type === 'aichat' ? 'currentAIChatId' : 'currentPdfChatId';
@@ -1493,7 +1508,16 @@
             ui.errorRetryContainerPdf.style.display = 'none';
             ui.errorRetryContainerAi.style.display = 'none';
 
-            const history = Array.isArray(chatData.history) ? chatData.history : [];
+            // Ensure history is an array - handle different data formats
+            let history = [];
+            if (Array.isArray(chatData.history)) {
+                history = chatData.history;
+            } else if (chatData.history && typeof chatData.history === 'object') {
+                // Sometimes Firebase returns objects instead of arrays
+                history = Object.values(chatData.history);
+            }
+            
+            console.log('📝 Processed history:', history.length, 'messages');
 
             if (chatData.type === 'pdfchat') {
                 ui.viewChatPDF.style.display = 'grid';
@@ -1504,6 +1528,7 @@
                 pdfChatHistory = history;
                 currentPDFName = chatData.pdfName;
                 
+                console.log('🔄 Rendering PDF chat with', pdfChatHistory.length, 'messages');
                 renderHistory(pdfChatHistory, 'pdfchat');
                 ui.pdfTitle.textContent = currentPDFName || 'PDF Preview';
                 ui.pdfViewer.src = '';
@@ -1521,6 +1546,7 @@
                 
                 aiChatHistory = history;
                 
+                console.log('🔄 Rendering AI chat with', aiChatHistory.length, 'messages');
                 renderHistory(aiChatHistory, 'aichat');
                 setUIState('workerready', 'AI worker connected.');
             }
