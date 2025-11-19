@@ -189,6 +189,7 @@ async def get_chat(cid: str, current_user: str = Depends(get_current_user)):
     doc = chats_collection.document(cid).get()
     if not doc.exists:
         raise HTTPException(404, "Chat not found")
+    
     d = doc.to_dict()
     
     # Verify ownership
@@ -198,8 +199,17 @@ async def get_chat(cid: str, current_user: str = Depends(get_current_user)):
     # Ensure history is always a list
     if "history" not in d or d["history"] is None:
         d["history"] = []
+    elif not isinstance(d["history"], list):
+        # Convert to list if it's something else
+        try:
+            d["history"] = list(d["history"])
+        except:
+            log(f"⚠️ Could not convert history to list for chat {cid}")
+            d["history"] = []
     
     d["id"] = doc.id
+    
+    log(f"📤 Returning chat {cid} with {len(d['history'])} messages")
     return d
 
 @app.post("/chats")
@@ -207,12 +217,26 @@ async def save_chat(chat: ChatData, current_user: str = Depends(get_current_user
     d = chat.dict()
     d["userId"] = current_user
     
+    # Ensure history is properly formatted as a list
+    if isinstance(d.get("history"), list):
+        # Convert each message to a proper dict
+        d["history"] = [
+            {
+                "sender": msg.get("sender", "user"),
+                "text": msg.get("text", ""),
+                "imageB64": msg.get("imageB64")
+            }
+            for msg in d["history"]
+        ]
+    else:
+        d["history"] = []
+    
     # Create new document with auto-generated ID
     doc_ref = chats_collection.document()
     d["id"] = doc_ref.id
     doc_ref.set(d)
     
-    log(f"💾 Chat saved for {current_user} with ID {doc_ref.id}")
+    log(f"💾 Chat saved for {current_user} with ID {doc_ref.id}, {len(d['history'])} messages")
     return {"ok": True, "id": doc_ref.id}
 
 @app.put("/chats/{cid}")
